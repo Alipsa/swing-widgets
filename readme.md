@@ -109,3 +109,97 @@ initial value as the default selected in the locale specified. MonthNameFormat i
 month names will be displayed in the popup. Default is "MMMM" (long format), set to "MMM" for the letter short style
 or include the year with "yyyy-MMM" or whatever. The display value (when a year month is chosen) will be displayed in the
 format provided with the yearMonthPattern argument.
+
+## DatePicker
+
+Package: `se.alipsa.datepicker`
+
+A date picker component with a masked text field and calendar popup.
+
+### Basic usage
+
+```java
+import se.alipsa.datepicker.DatePicker;
+
+class Example {
+  public static void main(String[] args) {
+    JFrame frame = new JFrame("Date picker");
+    JPanel panel = new JPanel();
+    frame.add(panel);
+    DatePicker dp = new DatePicker();
+    dp.addListener(date -> System.out.println(date));
+    panel.add(new JLabel("Pick a date: "));
+    panel.add(dp);
+    frame.pack();
+    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    frame.setVisible(true);
+  }
+}
+```
+
+### Constructors
+
+__DatePicker()__
+Uses today as initial date, system locale, locale-derived date pattern, range of +/- 20 years.
+
+__DatePicker(LocalDate initial)__
+Uses the specified initial date, system locale, locale-derived date pattern, range of +/- 20 years from initial.
+
+__DatePicker(LocalDate initial, Locale locale)__
+Uses the specified initial date and locale, locale-derived date pattern, range of +/- 20 years from initial.
+
+__DatePicker(LocalDate from, LocalDate to, LocalDate initial)__
+Custom date range with system locale and locale-derived date pattern.
+
+__DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale)__
+Custom date range and locale with locale-derived date pattern.
+
+__DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern)__
+Full control over range, locale, and date pattern (e.g. "yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy").
+
+### Veto and Highlight Policies
+
+```java
+// Disallow weekends
+dp.setVetoPolicy(date -> date.getDayOfWeek().getValue() < 6);
+
+// Highlight holidays
+dp.setHighlightPolicy(date -> {
+    if (date.getMonthValue() == 12 && date.getDayOfMonth() == 25) {
+        return new HighlightInfo(Color.RED, "Christmas");
+    }
+    return null;
+});
+```
+
+### CalendarPanel (standalone)
+
+The CalendarPanel can be used independently without the text field and popup:
+
+```java
+import se.alipsa.datepicker.CalendarPanel;
+import se.alipsa.datepicker.HighlightInfo;
+import java.awt.Color;
+import java.time.YearMonth;
+
+CalendarPanel calendar = new CalendarPanel();
+calendar.addListener(date -> System.out.println(date));
+calendar.setDisplayedYearMonth(YearMonth.of(2026, 12));
+calendar.setVetoPolicy(date -> date.getDayOfWeek().getValue() < 6);
+calendar.setHighlightPolicy(date -> date.getDayOfMonth() == 24
+    ? new HighlightInfo(Color.ORANGE, "Event")
+    : null);
+
+calendar.previousMonth();
+calendar.nextMonth();
+panel.add(calendar);
+```
+
+`CalendarPanel` supports:
+
+- `addListener(Consumer<LocalDate>)` and `removeListener(Consumer<LocalDate>)`
+- `getSelectedDate()` and `setSelectedDate(LocalDate)`
+- `getDisplayedYearMonth()` and `setDisplayedYearMonth(YearMonth)`
+- `previousMonth()` and `nextMonth()`
+- `setVetoPolicy(DateVetoPolicy)` to disable dates
+- `setHighlightPolicy(DateHighlightPolicy)` to decorate and tooltip dates

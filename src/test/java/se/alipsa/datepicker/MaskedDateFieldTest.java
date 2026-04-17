@@ -38,16 +38,16 @@ class MaskedDateFieldTest {
     }
 
     @Test
-    void testIsValidWithValidDate() {
+    void testIsDateValidWithValidDate() {
         MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
         field.setDate(LocalDate.of(2026, 6, 15));
-        assertTrue(field.isValid());
+        assertTrue(field.isDateValid());
     }
 
     @Test
-    void testIsValidWhenEmpty() {
+    void testIsDateValidWhenEmpty() {
         MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
-        assertFalse(field.isValid());
+        assertFalse(field.isDateValid());
     }
 
     @Test
@@ -56,7 +56,7 @@ class MaskedDateFieldTest {
         field.setVetoPolicy(date -> !date.getDayOfWeek().name().equals("SUNDAY"));
         LocalDate sunday = LocalDate.of(2026, 4, 19); // a Sunday
         field.setDate(sunday);
-        assertFalse(field.isValid());
+        assertFalse(field.isDateValid());
     }
 
     @Test
@@ -69,5 +69,13 @@ class MaskedDateFieldTest {
     void testMaskTemplateSlashFormat() {
         MaskedDateField field = new MaskedDateField("MM/dd/yyyy", Locale.US);
         assertEquals("__/__/____", field.getMaskTemplate());
+    }
+
+    @Test
+    void testSetDateNull() {
+        MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+        field.setDate(LocalDate.of(2026, 1, 1));
+        field.setDate(null);
+        assertNull(field.getDate());
     }
 }

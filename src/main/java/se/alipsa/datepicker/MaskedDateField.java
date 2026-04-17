@@ -112,10 +112,9 @@ public class MaskedDateField extends JTextField {
         return maskTemplate;
     }
 
-    @Override
-    public boolean isValid() {
+    public boolean isDateValid() {
         if (getDocument() == null || maskTemplate == null) {
-            return super.isValid();
+            return false;
         }
         LocalDate parsed = parseText();
         return parsed != null && isDateAllowed(parsed);
@@ -167,7 +166,7 @@ public class MaskedDateField extends JTextField {
         }
     }
 
-    void updateVisualState() {
+    private void updateVisualState() {
         if (getDocument() == null || maskTemplate == null) {
             return;
         }
@@ -212,8 +211,12 @@ public class MaskedDateField extends JTextField {
     }
 
     private void fireListeners(LocalDate date) {
-        for (Consumer<LocalDate> listener : listeners) {
-            listener.accept(date);
+        for (Consumer<LocalDate> listener : new ArrayList<>(listeners)) {
+            try {
+                listener.accept(date);
+            } catch (RuntimeException e) {
+                // Don't let one listener's failure prevent others from being notified
+            }
         }
     }
 

@@ -86,6 +86,16 @@ class CalendarPanelTest {
     }
 
     @Test
+    void testSetSelectedDateRespectsVeto() {
+        CalendarPanel panel = new CalendarPanel();
+        panel.setVetoPolicy(date -> date.getDayOfWeek().getValue() != 7); // no Sundays
+        LocalDate sunday = LocalDate.of(2026, 4, 19);
+        LocalDate before = panel.getSelectedDate();
+        panel.setSelectedDate(sunday);
+        assertEquals(before, panel.getSelectedDate()); // should not change
+    }
+
+    @Test
     void testRangeDefaults() {
         LocalDate initial = LocalDate.of(2026, 6, 15);
         CalendarPanel panel = new CalendarPanel(initial);

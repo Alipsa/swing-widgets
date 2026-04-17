@@ -70,6 +70,9 @@ public class DatePicker extends JPanel {
     }
 
     public DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("'from' date must be before 'to' date");
+        }
         this.locale = locale != null ? locale : Locale.getDefault();
         this.rangeFrom = from != null ? from : LocalDate.now().minusYears(20);
         this.rangeTo = to != null ? to : LocalDate.now().plusYears(20);
@@ -148,12 +151,12 @@ public class DatePicker extends JPanel {
     }
 
     private ImageIcon loadIcon(String path, int width, int height) {
-        try {
-            InputStream is = getClass().getResourceAsStream(path);
+        try (InputStream is = getClass().getResourceAsStream(path)) {
             if (is == null) return null;
             BufferedImage img = ImageIO.read(is);
             return new ImageIcon(new ImageIcon(img).getImage().getScaledInstance(width, height, SCALE_SMOOTH));
         } catch (IOException e) {
+            System.err.println("Failed to load icon: " + path);
             return null;
         }
     }
@@ -185,8 +188,12 @@ public class DatePicker extends JPanel {
     }
 
     private void fireListeners(LocalDate date) {
-        for (Consumer<LocalDate> listener : listeners) {
-            listener.accept(date);
+        for (Consumer<LocalDate> listener : new ArrayList<>(listeners)) {
+            try {
+                listener.accept(date);
+            } catch (RuntimeException e) {
+                // Don't let one listener's failure prevent others from being notified
+            }
         }
     }
 
@@ -231,6 +238,7 @@ public class DatePicker extends JPanel {
         if (popupWindow != null && popupWindow.isVisible()) {
             return;
         }
+        if (!textField.isShowing()) return;
 
         calendarPanel = new CalendarPanel(rangeFrom, rangeTo,
             lastValidDate != null ? lastValidDate : LocalDate.now(), locale);
@@ -358,18 +366,20 @@ public class DatePicker extends JPanel {
     }
 
     public static void main(String[] args) {
-        javax.swing.JFrame frame = new javax.swing.JFrame("DatePicker Demo");
-        JPanel panel = new JPanel();
-        frame.add(panel);
+        SwingUtilities.invokeLater(() -> {
+            javax.swing.JFrame frame = new javax.swing.JFrame("DatePicker Demo");
+            JPanel panel = new JPanel();
+            frame.add(panel);
 
-        DatePicker picker = new DatePicker();
-        picker.addListener(date -> System.out.println("Selected: " + date));
-        panel.add(new javax.swing.JLabel("Date: "));
-        panel.add(picker);
+            DatePicker picker = new DatePicker();
+            picker.addListener(date -> System.out.println("Selected: " + date));
+            panel.add(new javax.swing.JLabel("Date: "));
+            panel.add(picker);
 
-        frame.pack();
-        frame.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
-        frame.setLocationRelativeTo(null);
-        frame.setVisible(true);
+            frame.pack();
+            frame.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+        });
     }
 }

@@ -70,6 +70,9 @@ public class CalendarPanel extends JPanel {
     }
 
     public CalendarPanel(LocalDate from, LocalDate to, LocalDate initial, Locale locale) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("'from' date must be before 'to' date");
+        }
         this.locale = locale;
         this.rangeFrom = from;
         this.rangeTo = to;
@@ -227,6 +230,14 @@ public class CalendarPanel extends JPanel {
                     }
                 }
 
+                // Apply tooltip from highlight policy regardless of selection state
+                if (highlightPolicy != null && isCurrentMonth) {
+                    HighlightInfo info = highlightPolicy.getHighlightInfo(cellDate);
+                    if (info != null && info.getTooltip() != null) {
+                        cell.setToolTipText(info.getTooltip());
+                    }
+                }
+
                 cellDate = cellDate.plusDays(1);
             }
         }
@@ -286,7 +297,12 @@ public class CalendarPanel extends JPanel {
             JMenuItem item = new JMenuItem(String.valueOf(y));
             final int year = y;
             item.addActionListener(e -> {
-                displayedYearMonth = YearMonth.of(year, displayedYearMonth.getMonthValue());
+                YearMonth candidate = YearMonth.of(year, displayedYearMonth.getMonthValue());
+                YearMonth fromYm = YearMonth.from(rangeFrom);
+                YearMonth toYm = YearMonth.from(rangeTo);
+                if (candidate.isBefore(fromYm)) candidate = fromYm;
+                if (candidate.isAfter(toYm)) candidate = toYm;
+                displayedYearMonth = candidate;
                 drawCalendar();
             });
             menu.add(item);
@@ -295,8 +311,12 @@ public class CalendarPanel extends JPanel {
     }
 
     private void fireListeners(LocalDate date) {
-        for (Consumer<LocalDate> listener : listeners) {
-            listener.accept(date);
+        for (Consumer<LocalDate> listener : new ArrayList<>(listeners)) {
+            try {
+                listener.accept(date);
+            } catch (RuntimeException e) {
+                // Don't let one listener's failure prevent others from being notified
+            }
         }
     }
 
@@ -307,6 +327,7 @@ public class CalendarPanel extends JPanel {
     }
 
     public void setSelectedDate(LocalDate date) {
+        if (!isDateAllowed(date)) return;
         this.selectedDate = date;
         this.displayedYearMonth = YearMonth.from(date);
         drawCalendar();

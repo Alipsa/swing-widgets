@@ -1,9 +1,13 @@
 package se.alipsa.datepicker;
 
 import org.junit.jupiter.api.Test;
+import java.awt.Color;
+import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.JLabel;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CalendarPanelTest {
@@ -103,5 +107,48 @@ class CalendarPanelTest {
         panel.setDisplayedYearMonth(YearMonth.from(expectedFrom));
         panel.previousMonth();
         assertEquals(YearMonth.from(expectedFrom), panel.getDisplayedYearMonth());
+    }
+
+    @Test
+    void testHighlightPolicyCalledOncePerCell() {
+        CalendarPanel panel = new CalendarPanel(LocalDate.of(2026, 4, 17));
+        AtomicInteger calls = new AtomicInteger();
+
+        panel.setHighlightPolicy(date -> {
+            calls.incrementAndGet();
+            return null;
+        });
+
+        assertEquals(42, calls.get());
+    }
+
+    @Test
+    void testHighlightTooltipAppliedToSelectedDate() throws Exception {
+        LocalDate selected = LocalDate.of(2026, 4, 17);
+        CalendarPanel panel = new CalendarPanel(selected);
+        panel.setHighlightPolicy(date -> date.equals(selected) ? new HighlightInfo(Color.YELLOW, "Selected") : null);
+
+        JLabel selectedCell = findCell(panel, selected);
+        assertNotNull(selectedCell);
+        assertEquals("Selected", selectedCell.getToolTipText());
+    }
+
+    private JLabel findCell(CalendarPanel panel, LocalDate date) throws Exception {
+        Field dateCellValuesField = CalendarPanel.class.getDeclaredField("dateCellValues");
+        dateCellValuesField.setAccessible(true);
+        LocalDate[][] values = (LocalDate[][]) dateCellValuesField.get(panel);
+
+        Field dateCellsField = CalendarPanel.class.getDeclaredField("dateCells");
+        dateCellsField.setAccessible(true);
+        JLabel[][] cells = (JLabel[][]) dateCellsField.get(panel);
+
+        for (int row = 0; row < values.length; row++) {
+            for (int col = 0; col < values[row].length; col++) {
+                if (date.equals(values[row][col])) {
+                    return cells[row][col];
+                }
+            }
+        }
+        return null;
     }
 }

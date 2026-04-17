@@ -1,6 +1,7 @@
 package se.alipsa.datepicker;
 
 import org.junit.jupiter.api.Test;
+import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.Locale;
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,10 +82,11 @@ class DatePickerTest {
     @Test
     void testVetoPolicyPreventsSelection() {
         DatePicker picker = new DatePicker();
+        LocalDate previousDate = picker.getDate();
         picker.setVetoPolicy(date -> date.getDayOfWeek().getValue() != 7);
         LocalDate sunday = LocalDate.of(2026, 4, 19);
         picker.setDate(sunday);
-        assertNotEquals(sunday, picker.getDate());
+        assertEquals(previousDate, picker.getDate());
     }
 
     @Test
@@ -116,5 +118,38 @@ class DatePickerTest {
     void testGetCalendarButton() {
         DatePicker picker = new DatePicker();
         assertNotNull(picker.getCalendarButton());
+    }
+
+    @Test
+    void testSetVetoPolicyClearsNowInvalidSelection() {
+        LocalDate selectedDate = LocalDate.of(2026, 4, 20);
+        DatePicker picker = new DatePicker(selectedDate);
+        LocalDate[] received = {selectedDate};
+        int[] eventCount = {0};
+        picker.addListener(date -> {
+            received[0] = date;
+            eventCount[0]++;
+        });
+
+        picker.setVetoPolicy(date -> !date.equals(selectedDate));
+
+        assertNull(picker.getDate());
+        assertNull(picker.getTextField().getDate());
+        assertEquals(1, eventCount[0]);
+        assertNull(received[0]);
+    }
+
+    @Test
+    void testCalendarSelectionDoesNotRefireSameDate() throws Exception {
+        LocalDate selectedDate = LocalDate.of(2026, 4, 17);
+        DatePicker picker = new DatePicker(selectedDate);
+        int[] eventCount = {0};
+        picker.addListener(date -> eventCount[0]++);
+
+        Method onCalendarDateSelected = DatePicker.class.getDeclaredMethod("onCalendarDateSelected", LocalDate.class);
+        onCalendarDateSelected.setAccessible(true);
+        onCalendarDateSelected.invoke(picker, selectedDate);
+
+        assertEquals(0, eventCount[0]);
     }
 }

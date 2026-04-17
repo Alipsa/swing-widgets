@@ -9,14 +9,17 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.font.TextAttribute;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.TextStyle;
 import java.time.temporal.WeekFields;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -24,6 +27,7 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import javax.swing.border.LineBorder;
 
@@ -38,6 +42,7 @@ public class CalendarPanel extends JPanel {
     private static final int CELL_SIZE = 30;
     private static final int ROWS = 6;
     private static final int COLS = 7;
+    private static final int MAX_VISIBLE_YEAR_ITEMS = 10;
 
     private final Locale locale;
     private final LocalDate rangeFrom;
@@ -194,6 +199,7 @@ public class CalendarPanel extends JPanel {
                 boolean isCurrentMonth = YearMonth.from(cellDate).equals(displayedYearMonth);
                 boolean isSelected = cellDate.equals(selectedDate);
                 boolean isVetoed = !isDateAllowed(cellDate);
+                HighlightInfo highlightInfo = highlightPolicy != null ? highlightPolicy.getHighlightInfo(cellDate) : null;
 
                 if (isSelected) {
                     cell.setBackground(SELECTED_BG);
@@ -204,8 +210,8 @@ public class CalendarPanel extends JPanel {
                     cell.setBackground(VETOED_BG);
                     cell.setForeground(isCurrentMonth ? Color.BLACK : OTHER_MONTH_FG);
                     Font base = cell.getFont().deriveFont(Font.PLAIN);
-                    java.util.Map<java.awt.font.TextAttribute, Object> attrs = new java.util.HashMap<>(base.getAttributes());
-                    attrs.put(java.awt.font.TextAttribute.STRIKETHROUGH, java.awt.font.TextAttribute.STRIKETHROUGH_ON);
+                    Map<TextAttribute, Object> attrs = new HashMap<>(base.getAttributes());
+                    attrs.put(TextAttribute.STRIKETHROUGH, TextAttribute.STRIKETHROUGH_ON);
                     cell.setFont(base.deriveFont(attrs));
                 } else if (!isCurrentMonth) {
                     cell.setBackground(NORMAL_BG);
@@ -216,26 +222,13 @@ public class CalendarPanel extends JPanel {
                     cell.setForeground(Color.BLACK);
                     cell.setFont(cell.getFont().deriveFont(Font.PLAIN));
 
-                    // Apply highlight policy
-                    if (highlightPolicy != null) {
-                        HighlightInfo info = highlightPolicy.getHighlightInfo(cellDate);
-                        if (info != null) {
-                            if (info.getBackgroundColor() != null) {
-                                cell.setBackground(info.getBackgroundColor());
-                            }
-                            if (info.getTooltip() != null) {
-                                cell.setToolTipText(info.getTooltip());
-                            }
-                        }
+                    if (highlightInfo != null && highlightInfo.getBackgroundColor() != null) {
+                        cell.setBackground(highlightInfo.getBackgroundColor());
                     }
                 }
 
-                // Apply tooltip from highlight policy regardless of selection state
-                if (highlightPolicy != null && isCurrentMonth) {
-                    HighlightInfo info = highlightPolicy.getHighlightInfo(cellDate);
-                    if (info != null && info.getTooltip() != null) {
-                        cell.setToolTipText(info.getTooltip());
-                    }
+                if (highlightInfo != null && highlightInfo.getTooltip() != null) {
+                    cell.setToolTipText(highlightInfo.getTooltip());
                 }
 
                 cellDate = cellDate.plusDays(1);
@@ -291,8 +284,10 @@ public class CalendarPanel extends JPanel {
 
     private void showYearMenu() {
         JPopupMenu menu = new JPopupMenu();
+        JPanel yearsPanel = new JPanel(new GridBagLayout());
         int fromYear = rangeFrom.getYear();
         int toYear = rangeTo.getYear();
+        int itemHeight = 24;
         for (int y = fromYear; y <= toYear; y++) {
             JMenuItem item = new JMenuItem(String.valueOf(y));
             final int year = y;
@@ -305,7 +300,26 @@ public class CalendarPanel extends JPanel {
                 displayedYearMonth = candidate;
                 drawCalendar();
             });
-            menu.add(item);
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.gridx = 0;
+            gbc.gridy = y - fromYear;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.weightx = 1.0;
+            yearsPanel.add(item, gbc);
+            itemHeight = Math.max(itemHeight, item.getPreferredSize().height);
+        }
+
+        int yearCount = toYear - fromYear + 1;
+        if (yearCount > MAX_VISIBLE_YEAR_ITEMS) {
+            JScrollPane scrollPane = new JScrollPane(yearsPanel);
+            scrollPane.setBorder(BorderFactory.createEmptyBorder());
+            scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+            scrollPane.getVerticalScrollBar().setUnitIncrement(itemHeight);
+            scrollPane.setPreferredSize(new Dimension(Math.max(yearLabel.getPreferredSize().width + 24, 96),
+                itemHeight * MAX_VISIBLE_YEAR_ITEMS));
+            menu.add(scrollPane);
+        } else {
+            menu.add(yearsPanel);
         }
         menu.show(yearLabel, 0, yearLabel.getHeight());
     }
@@ -315,7 +329,7 @@ public class CalendarPanel extends JPanel {
             try {
                 listener.accept(date);
             } catch (RuntimeException e) {
-                // Don't let one listener's failure prevent others from being notified
+                System.err.println("CalendarPanel listener threw exception: " + e.getMessage());
             }
         }
     }

@@ -113,9 +113,6 @@ public class MaskedDateField extends JTextField {
     }
 
     public boolean isDateValid() {
-        if (getDocument() == null || maskTemplate == null) {
-            return false;
-        }
         LocalDate parsed = parseText();
         return parsed != null && isDateAllowed(parsed);
     }
@@ -167,9 +164,6 @@ public class MaskedDateField extends JTextField {
     }
 
     private void updateVisualState() {
-        if (getDocument() == null || maskTemplate == null) {
-            return;
-        }
         String text = getText();
         if (text == null || text.equals(maskTemplate) || text.contains("_")) {
             setForeground(NORMAL_COLOR);
@@ -215,7 +209,7 @@ public class MaskedDateField extends JTextField {
             try {
                 listener.accept(date);
             } catch (RuntimeException e) {
-                // Don't let one listener's failure prevent others from being notified
+                System.err.println("MaskedDateField listener threw exception: " + e.getMessage());
             }
         }
     }

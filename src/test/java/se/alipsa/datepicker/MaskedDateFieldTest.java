@@ -1,8 +1,10 @@
 package se.alipsa.datepicker;
 
 import org.junit.jupiter.api.Test;
+import java.awt.event.KeyEvent;
 import java.time.LocalDate;
 import java.util.Locale;
+import javax.swing.SwingUtilities;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MaskedDateFieldTest {
@@ -77,5 +79,42 @@ class MaskedDateFieldTest {
         field.setDate(LocalDate.of(2026, 1, 1));
         field.setDate(null);
         assertNull(field.getDate());
+    }
+
+    @Test
+    void testMaskFiltersNonDigits() throws Exception {
+        MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+
+        SwingUtilities.invokeAndWait(() -> {
+            try {
+                field.getDocument().insertString(0, "20a26-04-17", null);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        SwingUtilities.invokeAndWait(() -> {});
+
+        assertEquals("2026-04-17", field.getText());
+        assertEquals(LocalDate.of(2026, 4, 17), field.getDate());
+    }
+
+    @Test
+    void testArrowKeysSkipSeparators() throws Exception {
+        MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+
+        SwingUtilities.invokeAndWait(() -> {
+            field.setCaretPosition(3);
+            KeyEvent right = new KeyEvent(field, KeyEvent.KEY_PRESSED, System.currentTimeMillis(), 0,
+                KeyEvent.VK_RIGHT, KeyEvent.CHAR_UNDEFINED);
+            field.getKeyListeners()[0].keyPressed(right);
+        });
+        assertEquals(5, field.getCaretPosition());
+
+        SwingUtilities.invokeAndWait(() -> {
+            KeyEvent left = new KeyEvent(field, KeyEvent.KEY_PRESSED, System.currentTimeMillis(), 0,
+                KeyEvent.VK_LEFT, KeyEvent.CHAR_UNDEFINED);
+            field.getKeyListeners()[0].keyPressed(left);
+        });
+        assertEquals(3, field.getCaretPosition());
     }
 }

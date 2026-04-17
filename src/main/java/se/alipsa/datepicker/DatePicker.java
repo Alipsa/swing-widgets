@@ -2,9 +2,11 @@ package se.alipsa.datepicker;
 
 import static java.awt.Image.SCALE_SMOOTH;
 
+import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Point;
 import java.awt.Window;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
@@ -173,10 +175,13 @@ public class DatePicker extends JPanel {
 
     private void onCalendarDateSelected(LocalDate date) {
         if (date != null && isDateAllowed(date)) {
+            LocalDate previous = lastValidDate;
             lastValidDate = date;
             textField.setDate(date);
             closePopup();
-            fireListeners(date);
+            if (previous == null || !previous.equals(date)) {
+                fireListeners(date);
+            }
         }
     }
 
@@ -192,7 +197,7 @@ public class DatePicker extends JPanel {
             try {
                 listener.accept(date);
             } catch (RuntimeException e) {
-                // Don't let one listener's failure prevent others from being notified
+                System.err.println("DatePicker listener threw exception: " + e.getMessage());
             }
         }
     }
@@ -257,12 +262,12 @@ public class DatePicker extends JPanel {
         popupWindow.pack();
 
         // Position below the text field
-        java.awt.Point loc = textField.getLocationOnScreen();
+        Point loc = textField.getLocationOnScreen();
         int x = loc.x;
         int y = loc.y + textField.getHeight();
 
         // Keep within screen bounds
-        java.awt.Dimension screenSize = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
+        Dimension screenSize = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
         if (x + popupWindow.getWidth() > screenSize.width) {
             x = screenSize.width - popupWindow.getWidth();
         }
@@ -311,6 +316,14 @@ public class DatePicker extends JPanel {
         textField.setVetoPolicy(policy);
         if (calendarPanel != null) {
             calendarPanel.setVetoPolicy(policy);
+        }
+        if (lastValidDate != null && !isDateAllowed(lastValidDate)) {
+            lastValidDate = null;
+            textField.setDate(null);
+            if (calendarPanel != null) {
+                closePopup();
+            }
+            fireListeners(null);
         }
     }
 
@@ -365,21 +378,4 @@ public class DatePicker extends JPanel {
         return calendarButton;
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            javax.swing.JFrame frame = new javax.swing.JFrame("DatePicker Demo");
-            JPanel panel = new JPanel();
-            frame.add(panel);
-
-            DatePicker picker = new DatePicker();
-            picker.addListener(date -> System.out.println("Selected: " + date));
-            panel.add(new javax.swing.JLabel("Date: "));
-            panel.add(picker);
-
-            frame.pack();
-            frame.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
-            frame.setLocationRelativeTo(null);
-            frame.setVisible(true);
-        });
-    }
 }

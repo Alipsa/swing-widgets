@@ -178,8 +178,28 @@ The CalendarPanel can be used independently without the text field and popup:
 
 ```java
 import se.alipsa.datepicker.CalendarPanel;
+import se.alipsa.datepicker.HighlightInfo;
+import java.awt.Color;
+import java.time.YearMonth;
 
 CalendarPanel calendar = new CalendarPanel();
 calendar.addListener(date -> System.out.println(date));
+calendar.setDisplayedYearMonth(YearMonth.of(2026, 12));
+calendar.setVetoPolicy(date -> date.getDayOfWeek().getValue() < 6);
+calendar.setHighlightPolicy(date -> date.getDayOfMonth() == 24
+    ? new HighlightInfo(Color.ORANGE, "Event")
+    : null);
+
+calendar.previousMonth();
+calendar.nextMonth();
 panel.add(calendar);
 ```
+
+`CalendarPanel` supports:
+
+- `addListener(Consumer<LocalDate>)` and `removeListener(Consumer<LocalDate>)`
+- `getSelectedDate()` and `setSelectedDate(LocalDate)`
+- `getDisplayedYearMonth()` and `setDisplayedYearMonth(YearMonth)`
+- `previousMonth()` and `nextMonth()`
+- `setVetoPolicy(DateVetoPolicy)` to disable dates
+- `setHighlightPolicy(DateHighlightPolicy)` to decorate and tooltip dates

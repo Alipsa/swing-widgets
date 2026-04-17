@@ -32,22 +32,6 @@
       <url>https://github.com/Alipsa/swing-widgets/tree/master</url>
    </scm>
 
-   <distributionManagement>
-      <relocation>
-         <groupId>se.alipsa</groupId>
-         <artifactId>swing-widgets</artifactId>
-         <message>This artifact has been renamed to swing-widgets</message>
-      </relocation>
-      <snapshotRepository>
-         <id>ossrh</id>
-         <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-      </snapshotRepository>
-      <repository>
-         <id>ossrh</id>
-         <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-      </repository>
-   </distributionManagement>
-
    <profiles>
       <profile>
          <id>release</id>

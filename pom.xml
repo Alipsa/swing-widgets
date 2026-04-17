@@ -5,17 +5,17 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>se.alipsa</groupId>
-   <artifactId>swing-yearmonth-picker</artifactId>
-   <version>1.0.0</version>
+   <artifactId>swing-widgets</artifactId>
+   <version>1.0.1-SNAPSHOT</version>
    <packaging>jar</packaging>
 
-   <name>YearMonth picker</name>
-   <description>YearMonth picker for java 11 and later</description>
-   <url>https://github.com/Alipsa/swing-yearmonth-picker</url>
+   <name>Swing Widgets</name>
+   <description>Useful Swing components for java 11 and later</description>
+   <url>https://github.com/Alipsa/swing-widgets</url>
    <licenses>
       <license>
          <name>MIT License</name>
-         <url>https://raw.githubusercontent.com/Alipsa/swing-yearmonth-picker/master/LICENSE</url>
+         <url>https://raw.githubusercontent.com/Alipsa/swing-widgets/master/LICENSE</url>
       </license>
    </licenses>
    <developers>
@@ -27,9 +27,9 @@
       </developer>
    </developers>
    <scm>
-      <connection>scm:git:https://github.com/Alipsa/swing-yearmonth-picker.git</connection>
-      <developerConnection>scm:git:https://github.com/Alipsa/swing-yearmonth-picker.git</developerConnection>
-      <url>https://github.com/Alipsa/swing-yearmonth-picker/tree/master</url>
+      <connection>scm:git:https://github.com/Alipsa/swing-widgets.git</connection>
+      <developerConnection>scm:git:https://github.com/Alipsa/swing-widgets.git</developerConnection>
+      <url>https://github.com/Alipsa/swing-widgets/tree/master</url>
    </scm>
 
    <properties>

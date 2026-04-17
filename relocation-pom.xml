@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+
+   <groupId>se.alipsa</groupId>
+   <artifactId>swing-yearmonth-picker</artifactId>
+   <version>1.0.1</version>
+   <packaging>pom</packaging>
+
+   <name>Swing YearMonth Picker (relocated)</name>
+   <description>This artifact has been relocated to se.alipsa:swing-widgets</description>
+   <url>https://github.com/Alipsa/swing-widgets</url>
+   <licenses>
+      <license>
+         <name>MIT License</name>
+         <url>https://raw.githubusercontent.com/Alipsa/swing-widgets/master/LICENSE</url>
+      </license>
+   </licenses>
+   <developers>
+      <developer>
+         <name>Per Nyfelt</name>
+         <email>per.nyfelt@alipsa.se</email>
+         <organization>Alipsa HB</organization>
+         <organizationUrl>http://www.alipsa.se</organizationUrl>
+      </developer>
+   </developers>
+   <scm>
+      <connection>scm:git:https://github.com/Alipsa/swing-widgets.git</connection>
+      <developerConnection>scm:git:https://github.com/Alipsa/swing-widgets.git</developerConnection>
+      <url>https://github.com/Alipsa/swing-widgets/tree/master</url>
+   </scm>
+
+   <distributionManagement>
+      <relocation>
+         <groupId>se.alipsa</groupId>
+         <artifactId>swing-widgets</artifactId>
+         <message>This artifact has been renamed to swing-widgets</message>
+      </relocation>
+      <snapshotRepository>
+         <id>ossrh</id>
+         <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+      </snapshotRepository>
+      <repository>
+         <id>ossrh</id>
+         <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+      </repository>
+   </distributionManagement>
+
+   <profiles>
+      <profile>
+         <id>release</id>
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-gpg-plugin</artifactId>
+                  <version>3.2.7</version>
+                  <executions>
+                     <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                           <goal>sign</goal>
+                        </goals>
+                     </execution>
+                  </executions>
+               </plugin>
+               <plugin>
+                  <groupId>org.sonatype.plugins</groupId>
+                  <artifactId>nexus-staging-maven-plugin</artifactId>
+                  <version>1.7.0</version>
+                  <extensions>true</extensions>
+                  <configuration>
+                     <serverId>ossrh</serverId>
+                     <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+                     <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                  </configuration>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
+   </profiles>
+</project>

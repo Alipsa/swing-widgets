@@ -1,8 +1,11 @@
-# Swing Yearmonth picker
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.alipsa/swing-yearmonth-picker/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.alipsa/swing-yearmonth-picker)
-[![javadoc](https://javadoc.io/badge2/se.alipsa/swing-yearmonth-picker/javadoc.svg)](https://javadoc.io/doc/se.alipsa/swing-yearmonth-picker)
+# Swing Widgets
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.alipsa/swing-widgets/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.alipsa/swing-widgets)
+[![javadoc](https://javadoc.io/badge2/se.alipsa/swing-widgets/javadoc.svg)](https://javadoc.io/doc/se.alipsa/swing-widgets)
 
-A year-month date picker component for java swing. Requires java 11 or higher (tested with jdk 11 and 17)
+Useful Swing components for java 11 or higher (tested with jdk 11 and 17).
+
+## YearMonth Picker
+A year-month date picker component for java swing.
 
 There are two versions:
 1. YearMonthPickerCombo - a combobox that return a YearMonth.
@@ -35,7 +38,7 @@ the release section or add the following to your maven file:
 ```xml
 <dependency>
   <groupId>se.alipsa</groupId>
-  <artifactId>swing-yearmonth-picker</artifactId>
+  <artifactId>swing-widgets</artifactId>
   <version>1.0.0</version>
 </dependency>
 ```
@@ -43,7 +46,7 @@ the release section or add the following to your maven file:
 The module name for this library is `se.alipsa.symp`
 
 ## se.alipsa.symp.YearMonthPickerCombo
-<img src="https://raw.githubusercontent.com/Alipsa/swing-yearmonth-picker/master/docs/YearMonthPickerCombo.png" alt="YearMonthPickerCombo Screenshot" width="350" />
+<img src="https://raw.githubusercontent.com/Alipsa/swing-widgets/master/docs/YearMonthPickerCombo.png" alt="YearMonthPickerCombo Screenshot" width="350" />
 There are 5 constructors:
 
 __YearMonthPickerCombo()__
@@ -65,7 +68,7 @@ This gives you all yearmonths between from and to (both from and to included) wi
 initial value as the default selected, displayed in the locale specified in the format specified.
 
 ## se.alipsa.symp.YearMonthPicker
-<img src="https://raw.githubusercontent.com/Alipsa/swing-yearmonth-picker/master/docs/YearMonthPicker.png" alt="YearMonthPickerCombo Screenshot" width="350" />
+<img src="https://raw.githubusercontent.com/Alipsa/swing-widgets/master/docs/YearMonthPicker.png" alt="YearMonthPickerCombo Screenshot" width="350" />
 There are 5 constructors:
 
 __YearMonthPicker()__ This gives you YearMonths 3 year back and 3 years into the future from now in

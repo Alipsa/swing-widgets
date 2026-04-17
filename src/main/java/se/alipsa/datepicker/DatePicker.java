@@ -31,10 +31,11 @@ import javax.swing.SwingUtilities;
 /** A date picker component that combines a masked text field with a popup calendar. */
 public class DatePicker extends JPanel {
 
-  private final Locale locale;
+  private Locale locale;
   private final LocalDate rangeFrom;
   private final LocalDate rangeTo;
-  private final String datePattern;
+  private String datePattern;
+  private final boolean usesDerivedPattern;
 
   private LocalDate lastValidDate;
   private DateVetoPolicy vetoPolicy;
@@ -72,7 +73,9 @@ public class DatePicker extends JPanel {
         initial != null ? initial.minusYears(20) : LocalDate.now().minusYears(20),
         initial != null ? initial.plusYears(20) : LocalDate.now().plusYears(20),
         initial != null ? initial : LocalDate.now(),
-        locale);
+        locale,
+        null,
+        true);
   }
 
   /**
@@ -95,7 +98,7 @@ public class DatePicker extends JPanel {
    * @param locale the locale used for formatting and calendar labels
    */
   public DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale) {
-    this(from, to, initial, locale, derivePattern(locale));
+    this(from, to, initial, locale, null, true);
   }
 
   /**
@@ -110,6 +113,16 @@ public class DatePicker extends JPanel {
    */
   public DatePicker(
       LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern) {
+    this(from, to, initial, locale, datePattern, datePattern == null);
+  }
+
+  private DatePicker(
+      LocalDate from,
+      LocalDate to,
+      LocalDate initial,
+      Locale locale,
+      String datePattern,
+      boolean usesDerivedPattern) {
     if (from != null && to != null && from.isAfter(to)) {
       throw new IllegalArgumentException("'from' date must be before 'to' date");
     }
@@ -117,8 +130,10 @@ public class DatePicker extends JPanel {
     this.rangeFrom = from != null ? from : LocalDate.now().minusYears(20);
     this.rangeTo = to != null ? to : LocalDate.now().plusYears(20);
     this.datePattern = datePattern != null ? datePattern : derivePattern(this.locale);
+    this.usesDerivedPattern = usesDerivedPattern;
     this.lastValidDate = initial;
 
+    super.setLocale(this.locale);
     setLayout(new GridBagLayout());
     createComponents();
     layoutComponents();
@@ -142,8 +157,7 @@ public class DatePicker extends JPanel {
   }
 
   private void createComponents() {
-    textField = new MaskedDateField(datePattern, locale);
-    textField.addListener(this::onTextFieldDateChanged);
+    rebuildTextField(null, isEnabled());
 
     ImageIcon icon = loadIcon("/calendar.png", 20, 20);
     if (icon != null) {
@@ -153,6 +167,16 @@ public class DatePicker extends JPanel {
     }
     calendarButton.setMargin(new Insets(2, 4, 2, 4));
     calendarButton.addActionListener(e -> togglePopup());
+  }
+
+  private void rebuildTextField(LocalDate date, boolean enabled) {
+    textField = new MaskedDateField(datePattern, locale);
+    textField.addListener(this::onTextFieldDateChanged);
+    textField.setVetoPolicy(vetoPolicy);
+    if (date != null) {
+      textField.setDate(date);
+    }
+    textField.setEnabled(enabled);
   }
 
   private void layoutComponents() {
@@ -427,6 +451,30 @@ public class DatePicker extends JPanel {
   }
 
   /**
+   * Updates the picker locale without recreating the component.
+   *
+   * @param newLocale the new locale to apply; {@code null} is ignored
+   */
+  @Override
+  public void setLocale(Locale newLocale) {
+    if (newLocale == null || newLocale.equals(locale)) {
+      return;
+    }
+
+    LocalDate date = getDate();
+    boolean enabled = isEnabled();
+
+    closePopup();
+    super.setLocale(newLocale);
+    this.locale = newLocale;
+    if (usesDerivedPattern) {
+      this.datePattern = derivePattern(newLocale);
+    }
+    rebuildTextField(date, enabled);
+    layoutComponents();
+  }
+
+  /**
    * Returns the first selectable date.
    *
    * @return the start of the allowed range
@@ -490,7 +538,10 @@ public class DatePicker extends JPanel {
   /**
    * Returns the masked text field used by the picker.
    *
-   * @return the text field component
+   * <p>The returned instance is replaced when {@link #setLocale(Locale)} rebuilds the field, so
+   * callers must not cache it across locale changes.
+   *
+   * @return the current text field component
    */
   public MaskedDateField getTextField() {
     return textField;

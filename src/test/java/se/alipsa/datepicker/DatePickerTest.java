@@ -156,4 +156,78 @@ class DatePickerTest {
 
     assertEquals(0, eventCount[0]);
   }
+
+  @Test
+  void testSetLocaleDerivedPatternUpdates() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), Locale.US);
+
+    picker.setLocale(Locale.GERMANY);
+
+    assertEquals("dd.MM.yyyy", picker.getDatePattern());
+  }
+
+  @Test
+  void testSetLocaleKeepsExplicitPattern() {
+    DatePicker picker =
+        new DatePicker(null, null, LocalDate.of(2026, 4, 17), Locale.US, "yyyy-MM-dd");
+
+    picker.setLocale(Locale.GERMANY);
+
+    assertEquals("yyyy-MM-dd", picker.getDatePattern());
+  }
+
+  @Test
+  void testSetLocalePreservesDate() {
+    LocalDate date = LocalDate.of(2026, 12, 25);
+    DatePicker picker = new DatePicker(date, Locale.US);
+
+    picker.setLocale(Locale.GERMANY);
+
+    assertEquals(date, picker.getDate());
+  }
+
+  @Test
+  void testSetLocalePreservesDisabledState() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), Locale.US);
+    picker.setEnabled(false);
+
+    picker.setLocale(Locale.GERMANY);
+
+    assertFalse(picker.isEnabled());
+    assertFalse(picker.getTextField().isEnabled());
+    assertFalse(picker.getCalendarButton().isEnabled());
+  }
+
+  @Test
+  void testSetLocalePreservesVetoPolicy() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), Locale.US);
+    picker.setVetoPolicy(date -> date.getDayOfWeek().getValue() != 7);
+
+    picker.setLocale(Locale.GERMANY);
+    picker.setDate(LocalDate.of(2026, 4, 19));
+
+    assertEquals(LocalDate.of(2026, 4, 17), picker.getDate());
+  }
+
+  @Test
+  void testSetLocaleSameLocaleIsNoOp() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), Locale.US);
+    MaskedDateField originalTextField = picker.getTextField();
+
+    picker.setLocale(Locale.US);
+
+    assertSame(originalTextField, picker.getTextField());
+  }
+
+  @Test
+  void testSetLocaleNullIsIgnored() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), Locale.US);
+    MaskedDateField originalTextField = picker.getTextField();
+
+    picker.setLocale(null);
+
+    assertEquals(Locale.US, picker.getLocale());
+    assertSame(originalTextField, picker.getTextField());
+    assertEquals("MM/dd/yyyy", picker.getDatePattern());
+  }
 }

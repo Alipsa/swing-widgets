@@ -1,5 +1,5 @@
 # Swing Widgets
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.alipsa/swing-widgets/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.alipsa/swing-widgets)
+[![Maven Central](https://img.shields.io/maven-central/v/se.alipsa/swing-widgets)](https://central.sonatype.com/artifact/se.alipsa/swing-widgets)
 [![javadoc](https://javadoc.io/badge2/se.alipsa/swing-widgets/javadoc.svg)](https://javadoc.io/doc/se.alipsa/swing-widgets)
 
 Useful Swing components for java 11 or higher (tested with jdk 11 and 17).

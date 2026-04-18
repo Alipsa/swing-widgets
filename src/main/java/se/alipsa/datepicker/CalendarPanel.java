@@ -1,6 +1,7 @@
 package se.alipsa.datepicker;
 
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -22,13 +23,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
-import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
+import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.border.LineBorder;
 
 /** A standalone month calendar component with optional veto and highlight policies. */
@@ -40,10 +46,11 @@ public class CalendarPanel extends JPanel {
   private static final Color VETOED_BG = new Color(240, 240, 240);
   private static final Color HEADER_BG = new Color(240, 240, 240);
   private static final Color NORMAL_BG = Color.WHITE;
-  private static final int CELL_SIZE = 30;
+  private static final int CELL_SIZE = 36;
   private static final int ROWS = 6;
   private static final int COLS = 7;
-  private static final int MAX_VISIBLE_YEAR_ITEMS = 10;
+  private static final float HEADER_FONT_DELTA = -1.0f;
+  private static final float CELL_FONT_DELTA = -1.0f;
 
   private final Locale locale;
   private final LocalDate rangeFrom;
@@ -123,13 +130,15 @@ public class CalendarPanel extends JPanel {
 
     gbc.gridx = 0;
     prevMonthBtn = new JButton("\u25C0");
-    prevMonthBtn.setMargin(new Insets(1, 4, 1, 4));
+    prevMonthBtn.setMargin(new Insets(1, 3, 1, 3));
     prevMonthBtn.addActionListener(e -> previousMonth());
     add(prevMonthBtn, gbc);
 
     gbc.gridx = 1;
     gbc.gridwidth = 3;
     monthLabel = new JLabel("", SwingConstants.CENTER);
+    monthLabel.setFont(
+        monthLabel.getFont().deriveFont(monthLabel.getFont().getSize2D() + HEADER_FONT_DELTA));
     monthLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     monthLabel.addMouseListener(
         new MouseAdapter() {
@@ -143,12 +152,14 @@ public class CalendarPanel extends JPanel {
     gbc.gridx = 4;
     gbc.gridwidth = 2;
     yearLabel = new JLabel("", SwingConstants.CENTER);
+    yearLabel.setFont(
+        yearLabel.getFont().deriveFont(yearLabel.getFont().getSize2D() + HEADER_FONT_DELTA));
     yearLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     yearLabel.addMouseListener(
         new MouseAdapter() {
           @Override
           public void mouseClicked(MouseEvent e) {
-            showYearMenu();
+            showYearPopup();
           }
         });
     add(yearLabel, gbc);
@@ -156,7 +167,7 @@ public class CalendarPanel extends JPanel {
     gbc.gridx = 6;
     gbc.gridwidth = 1;
     nextMonthBtn = new JButton("\u25B6");
-    nextMonthBtn.setMargin(new Insets(1, 4, 1, 4));
+    nextMonthBtn.setMargin(new Insets(1, 3, 1, 3));
     nextMonthBtn.addActionListener(e -> nextMonth());
     add(nextMonthBtn, gbc);
 
@@ -168,10 +179,10 @@ public class CalendarPanel extends JPanel {
       DayOfWeek dow = firstDayOfWeek.plus(col);
       String name = dow.getDisplayName(TextStyle.SHORT, locale);
       JLabel header = new JLabel(name, SwingConstants.CENTER);
-      header.setFont(header.getFont().deriveFont(Font.BOLD));
+      header.setFont(
+          header.getFont().deriveFont(Font.BOLD, header.getFont().getSize2D() + HEADER_FONT_DELTA));
       header.setOpaque(true);
       header.setBackground(HEADER_BG);
-      header.setPreferredSize(new Dimension(CELL_SIZE, CELL_SIZE));
       add(header, gbc);
     }
 
@@ -183,6 +194,7 @@ public class CalendarPanel extends JPanel {
         cell.setOpaque(true);
         cell.setBackground(NORMAL_BG);
         cell.setPreferredSize(new Dimension(CELL_SIZE, CELL_SIZE));
+        cell.setFont(cell.getFont().deriveFont(cell.getFont().getSize2D() + CELL_FONT_DELTA));
         cell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         final int r = row;
         final int c = col;
@@ -308,53 +320,114 @@ public class CalendarPanel extends JPanel {
     menu.show(monthLabel, 0, monthLabel.getHeight());
   }
 
-  private void showYearMenu() {
-    JPopupMenu menu = new JPopupMenu();
-    JPanel yearsPanel = new JPanel(new GridBagLayout());
-    int fromYear = rangeFrom.getYear();
-    int toYear = rangeTo.getYear();
-    int itemHeight = 24;
-    for (int y = fromYear; y <= toYear; y++) {
-      JMenuItem item = new JMenuItem(String.valueOf(y));
-      final int year = y;
-      item.addActionListener(
-          e -> {
-            YearMonth candidate = YearMonth.of(year, displayedYearMonth.getMonthValue());
-            YearMonth fromYm = YearMonth.from(rangeFrom);
-            YearMonth toYm = YearMonth.from(rangeTo);
-            if (candidate.isBefore(fromYm)) {
-              candidate = fromYm;
-            }
-            if (candidate.isAfter(toYm)) {
-              candidate = toYm;
-            }
-            displayedYearMonth = candidate;
-            drawCalendar();
-          });
-      GridBagConstraints gbc = new GridBagConstraints();
-      gbc.gridx = 0;
-      gbc.gridy = y - fromYear;
-      gbc.fill = GridBagConstraints.HORIZONTAL;
-      gbc.weightx = 1.0;
-      yearsPanel.add(item, gbc);
-      itemHeight = Math.max(itemHeight, item.getPreferredSize().height);
+  private void showYearPopup() {
+    JPopupMenu popup = new JPopupMenu();
+    JSpinner spinner =
+        new JSpinner(
+            new SpinnerNumberModel(
+                displayedYearMonth.getYear(), rangeFrom.getYear(), rangeTo.getYear(), 1));
+    JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "####");
+    spinner.setEditor(editor);
+    Font bigFont = yearLabel.getFont().deriveFont(Font.PLAIN, yearLabel.getFont().getSize2D() + 6f);
+    editor.getTextField().setFont(bigFont);
+    editor.getTextField().setColumns(6);
+    editor.getTextField().setHorizontalAlignment(SwingConstants.CENTER);
+    spinner.setAlignmentX(Component.CENTER_ALIGNMENT);
+    spinner.setPreferredSize(new Dimension(130, 42));
+    for (Component child : spinner.getComponents()) {
+      if (child instanceof JButton) {
+        child.setPreferredSize(new Dimension(26, 20));
+      }
     }
 
-    int yearCount = toYear - fromYear + 1;
-    if (yearCount > MAX_VISIBLE_YEAR_ITEMS) {
-      JScrollPane scrollPane = new JScrollPane(yearsPanel);
-      scrollPane.setBorder(BorderFactory.createEmptyBorder());
-      scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-      scrollPane.getVerticalScrollBar().setUnitIncrement(itemHeight);
-      scrollPane.setPreferredSize(
-          new Dimension(
-              Math.max(yearLabel.getPreferredSize().width + 24, 96),
-              itemHeight * MAX_VISIBLE_YEAR_ITEMS));
-      menu.add(scrollPane);
-    } else {
-      menu.add(yearsPanel);
+    spinner.addChangeListener(e -> updateDisplayedYear((Integer) spinner.getValue()));
+
+    JPanel content = new JPanel();
+    content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+    content.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+
+    JLabel title = new JLabel("Select year", SwingConstants.CENTER);
+    title.setAlignmentX(Component.CENTER_ALIGNMENT);
+    title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 1f));
+
+    JLabel hint = new JLabel("Type or use arrows", SwingConstants.CENTER);
+    hint.setAlignmentX(Component.CENTER_ALIGNMENT);
+    hint.setFont(hint.getFont().deriveFont(hint.getFont().getSize2D() - 1f));
+
+    content.add(title);
+    content.add(Box.createVerticalStrut(8));
+    content.add(spinner);
+    content.add(Box.createVerticalStrut(6));
+    content.add(hint);
+
+    popup.add(content);
+
+    editor.getTextField().getInputMap().put(KeyStroke.getKeyStroke("ENTER"), "applyYear");
+    editor
+        .getTextField()
+        .getActionMap()
+        .put(
+            "applyYear",
+            new javax.swing.AbstractAction() {
+              @Override
+              public void actionPerformed(java.awt.event.ActionEvent e) {
+                updateDisplayedYear((Integer) spinner.getValue());
+                popup.setVisible(false);
+              }
+            });
+    editor.getTextField().getInputMap().put(KeyStroke.getKeyStroke("ESCAPE"), "dismissYearPopup");
+    editor
+        .getTextField()
+        .getActionMap()
+        .put(
+            "dismissYearPopup",
+            new javax.swing.AbstractAction() {
+              @Override
+              public void actionPerformed(java.awt.event.ActionEvent e) {
+                popup.setVisible(false);
+              }
+            });
+    spinner
+        .getInputMap(JSpinner.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+        .put(KeyStroke.getKeyStroke("ESCAPE"), "dismissYearPopup");
+    spinner
+        .getActionMap()
+        .put(
+            "dismissYearPopup",
+            new javax.swing.AbstractAction() {
+              @Override
+              public void actionPerformed(java.awt.event.ActionEvent e) {
+                popup.setVisible(false);
+              }
+            });
+
+    editor
+        .getTextField()
+        .addKeyListener(
+            new java.awt.event.KeyAdapter() {
+              @Override
+              public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER) {
+                  updateDisplayedYear((Integer) spinner.getValue());
+                }
+              }
+            });
+    popup.show(yearLabel, 0, yearLabel.getHeight());
+    SwingUtilities.invokeLater(() -> editor.getTextField().requestFocusInWindow());
+  }
+
+  private void updateDisplayedYear(int year) {
+    YearMonth candidate = YearMonth.of(year, displayedYearMonth.getMonthValue());
+    YearMonth fromYm = YearMonth.from(rangeFrom);
+    YearMonth toYm = YearMonth.from(rangeTo);
+    if (candidate.isBefore(fromYm)) {
+      candidate = fromYm;
     }
-    menu.show(yearLabel, 0, yearLabel.getHeight());
+    if (candidate.isAfter(toYm)) {
+      candidate = toYm;
+    }
+    displayedYearMonth = candidate;
+    drawCalendar();
   }
 
   private void fireListeners(LocalDate date) {

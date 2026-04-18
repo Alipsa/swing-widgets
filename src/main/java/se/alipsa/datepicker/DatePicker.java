@@ -6,6 +6,7 @@ import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Window;
 import java.awt.event.WindowEvent;
@@ -148,25 +149,36 @@ public class DatePicker extends JPanel {
         DateTimeFormatterBuilder.getLocalizedDateTimePattern(
             FormatStyle.SHORT, null, IsoChronology.INSTANCE, locale);
     // Normalize to fixed-width: e.g. "M/d/yy" -> "MM/dd/yyyy"
-    pattern = pattern.replace("yyyy", "YYYY_PLACEHOLDER");
-    pattern = pattern.replace("yy", "yyyy");
-    pattern = pattern.replace("YYYY_PLACEHOLDER", "yyyy");
+    pattern = pattern.replaceAll("(?<!y)y{1,4}(?!y)", "yyyy");
     pattern = pattern.replaceAll("(?<!M)M(?!M)", "MM");
     pattern = pattern.replaceAll("(?<!d)d(?!d)", "dd");
     return pattern;
   }
 
+  private static boolean isOwnedBy(Window candidate, Window owner) {
+    Window current = candidate;
+    while (current != null) {
+      if (current == owner) {
+        return true;
+      }
+      current = current.getOwner();
+    }
+    return false;
+  }
+
   private void createComponents() {
     rebuildTextField(null, isEnabled());
 
-    ImageIcon icon = loadIcon("/calendar.png", 20, 20);
+    ImageIcon icon = loadIcon("/calendar.png", 30, 30);
     if (icon != null) {
       calendarButton = new JButton(icon);
     } else {
       calendarButton = new JButton("\u25BC");
     }
-    calendarButton.setMargin(new Insets(2, 4, 2, 4));
+    calendarButton.setMargin(new Insets(0, 1, 0, 1));
+    calendarButton.setIconTextGap(0);
     calendarButton.addActionListener(e -> togglePopup());
+    updateCalendarButtonSize();
   }
 
   private void rebuildTextField(LocalDate date, boolean enabled) {
@@ -177,6 +189,17 @@ public class DatePicker extends JPanel {
       textField.setDate(date);
     }
     textField.setEnabled(enabled);
+    if (calendarButton != null) {
+      updateCalendarButtonSize();
+    }
+  }
+
+  private void updateCalendarButtonSize() {
+    Dimension textFieldSize = textField.getPreferredSize();
+    int side = Math.max(textFieldSize.height, 34);
+    Dimension buttonSize = new Dimension(side, side);
+    calendarButton.setPreferredSize(buttonSize);
+    calendarButton.setMinimumSize(buttonSize);
   }
 
   private void layoutComponents() {
@@ -374,7 +397,18 @@ public class DatePicker extends JPanel {
 
           @Override
           public void windowLostFocus(WindowEvent e) {
-            SwingUtilities.invokeLater(() -> closePopup());
+            Window oppositeWindow = e.getOppositeWindow();
+            if (isOwnedBy(oppositeWindow, popupWindow)) {
+              return;
+            }
+            SwingUtilities.invokeLater(
+                () -> {
+                  Window focusedWindow =
+                      KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+                  if (!isOwnedBy(focusedWindow, popupWindow)) {
+                    closePopup();
+                  }
+                });
           }
         });
   }

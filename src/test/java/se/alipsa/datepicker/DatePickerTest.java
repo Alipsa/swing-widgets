@@ -167,6 +167,22 @@ class DatePickerTest {
   }
 
   @Test
+  void testSwedishLocaleUsesFourDigitYearPattern() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), new Locale("sv", "SE"));
+
+    assertEquals("yyyy-MM-dd", picker.getDatePattern());
+  }
+
+  @Test
+  void testSetLocaleSwedishUsesFourDigitYearPattern() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 4, 17), Locale.US);
+
+    picker.setLocale(new Locale("sv", "SE"));
+
+    assertEquals("yyyy-MM-dd", picker.getDatePattern());
+  }
+
+  @Test
   void testSetLocaleKeepsExplicitPattern() {
     DatePicker picker =
         new DatePicker(null, null, LocalDate.of(2026, 4, 17), Locale.US, "yyyy-MM-dd");

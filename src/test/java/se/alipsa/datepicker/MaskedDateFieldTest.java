@@ -3,6 +3,7 @@ package se.alipsa.datepicker;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.awt.event.KeyEvent;
+import java.awt.font.TextAttribute;
 import java.time.LocalDate;
 import java.util.Locale;
 import javax.swing.SwingUtilities;
@@ -60,6 +61,22 @@ class MaskedDateFieldTest {
     LocalDate sunday = LocalDate.of(2026, 4, 19); // a Sunday
     field.setDate(sunday);
     assertFalse(field.isDateValid());
+  }
+
+  @Test
+  void testStrikethroughClearsForAllowedDate() {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+    field.setVetoPolicy(date -> date.getDayOfWeek().getValue() != 7);
+
+    field.setDate(LocalDate.of(2026, 4, 19));
+    assertEquals(
+        TextAttribute.STRIKETHROUGH_ON,
+        field.getFont().getAttributes().get(TextAttribute.STRIKETHROUGH));
+
+    field.setDate(LocalDate.of(2026, 4, 20));
+    assertNotEquals(
+        TextAttribute.STRIKETHROUGH_ON,
+        field.getFont().getAttributes().get(TextAttribute.STRIKETHROUGH));
   }
 
   @Test
@@ -131,6 +148,112 @@ class MaskedDateFieldTest {
                   KeyEvent.CHAR_UNDEFINED);
           field.getKeyListeners()[0].keyPressed(left);
         });
+    assertEquals(3, field.getCaretPosition());
+  }
+
+  @Test
+  void testTypingFullYearAdvancesPastSeparator() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            field.getDocument().insertString(0, "2026", null);
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("2026-__-__", field.getText());
+    assertEquals(5, field.getCaretPosition());
+  }
+
+  @Test
+  void testTypingSeparatorJumpsToNextSection() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.setText("2026-__-__");
+          field.setCaretPosition(4);
+          KeyEvent dash =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_TYPED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_UNDEFINED,
+                  '-');
+          field.getKeyListeners()[0].keyTyped(dash);
+        });
+
+    assertEquals(5, field.getCaretPosition());
+  }
+
+  @Test
+  void testTypingSlashJumpsToNextSectionRegardlessOfPattern() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.setCaretPosition(2);
+          KeyEvent slash =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_TYPED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_UNDEFINED,
+                  '/');
+          field.getKeyListeners()[0].keyTyped(slash);
+        });
+
+    assertEquals(5, field.getCaretPosition());
+  }
+
+  @Test
+  void testTypingDotJumpsToFollowingSectionRegardlessOfPattern() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.setCaretPosition(5);
+          KeyEvent dot =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_TYPED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_UNDEFINED,
+                  '.');
+          field.getKeyListeners()[0].keyTyped(dot);
+        });
+
+    assertEquals(8, field.getCaretPosition());
+  }
+
+  @Test
+  void testBackspaceDeletesAcrossSeparatorBoundary() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+    field.setDate(LocalDate.of(2026, 4, 18));
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.setCaretPosition(5);
+          KeyEvent backspace =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_PRESSED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_BACK_SPACE,
+                  KeyEvent.CHAR_UNDEFINED);
+          field.getKeyListeners()[0].keyPressed(backspace);
+          field.getKeyListeners()[0].keyPressed(backspace);
+        });
+
+    assertEquals("202_-_4-18", field.getText());
     assertEquals(3, field.getCaretPosition());
   }
 }

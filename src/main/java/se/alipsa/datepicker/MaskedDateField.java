@@ -34,6 +34,7 @@ public class MaskedDateField extends JTextField {
   private final DateTimeFormatter formatter;
   private final String maskTemplate;
   private final boolean[] editablePositions;
+  private Font baseFont;
 
   private LocalDate lastValidDate;
   private DateVetoPolicy vetoPolicy;
@@ -52,6 +53,7 @@ public class MaskedDateField extends JTextField {
     this.formatter = DateTimeFormatter.ofPattern(datePattern, locale);
     this.maskTemplate = buildMaskTemplate(datePattern);
     this.editablePositions = buildEditablePositions(datePattern);
+    this.baseFont = getFont().deriveFont(Font.PLAIN);
 
     setColumns(datePattern.length());
     setText(maskTemplate);
@@ -216,7 +218,7 @@ public class MaskedDateField extends JTextField {
     if (text == null || text.equals(maskTemplate) || text.contains("_")) {
       setForeground(NORMAL_COLOR);
       setBackground(Color.WHITE);
-      setFont(getFont().deriveFont(Font.PLAIN));
+      setFont(baseFont);
       return;
     }
 
@@ -224,18 +226,27 @@ public class MaskedDateField extends JTextField {
     if (parsed == null) {
       setForeground(INVALID_COLOR);
       setBackground(Color.WHITE);
-      setFont(getFont().deriveFont(Font.PLAIN));
+      setFont(baseFont);
     } else if (!isDateAllowed(parsed)) {
       setForeground(NORMAL_COLOR);
       setBackground(Color.WHITE);
-      Font base = getFont().deriveFont(Font.PLAIN);
-      Map<TextAttribute, Object> attrs = new HashMap<>(base.getAttributes());
+      Map<TextAttribute, Object> attrs = new HashMap<>(baseFont.getAttributes());
       attrs.put(TextAttribute.STRIKETHROUGH, TextAttribute.STRIKETHROUGH_ON);
-      setFont(base.deriveFont(attrs));
+      setFont(baseFont.deriveFont(attrs));
     } else {
       setForeground(NORMAL_COLOR);
       setBackground(Color.WHITE);
-      setFont(getFont().deriveFont(Font.PLAIN));
+      setFont(baseFont);
+    }
+  }
+
+  @Override
+  public void setFont(Font font) {
+    super.setFont(font);
+    if (font != null
+        && !TextAttribute.STRIKETHROUGH_ON.equals(
+            font.getAttributes().get(TextAttribute.STRIKETHROUGH))) {
+      baseFont = font.deriveFont(Font.PLAIN);
     }
   }
 
@@ -251,6 +262,54 @@ public class MaskedDateField extends JTextField {
       if (previous == null || !previous.equals(parsed)) {
         fireListeners(parsed);
       }
+    }
+  }
+
+  private boolean isEditablePosition(int pos) {
+    return pos >= 0 && pos < editablePositions.length && editablePositions[pos];
+  }
+
+  private int findNextEditablePosition(int pos) {
+    int next = Math.max(0, pos);
+    while (next < editablePositions.length && !editablePositions[next]) {
+      next++;
+    }
+    return Math.min(next, editablePositions.length);
+  }
+
+  private int findPreviousEditablePosition(int pos) {
+    int prev = Math.min(pos, editablePositions.length - 1);
+    while (prev >= 0 && !editablePositions[prev]) {
+      prev--;
+    }
+    return prev;
+  }
+
+  private int findNextSectionStart(int pos) {
+    int next = Math.max(0, pos);
+    while (next < editablePositions.length && editablePositions[next]) {
+      next++;
+    }
+    return findNextEditablePosition(next);
+  }
+
+  private boolean isSectionSeparatorKey(char typedChar) {
+    return typedChar == '-' || typedChar == '/' || typedChar == '.';
+  }
+
+  private void clearEditablePosition(int pos) {
+    if (!isEditablePosition(pos)) {
+      return;
+    }
+
+    internalUpdate = true;
+    try {
+      StringBuilder result = new StringBuilder(getText());
+      result.setCharAt(pos, '_');
+      setText(result.toString());
+      updateVisualState();
+    } finally {
+      internalUpdate = false;
     }
   }
 
@@ -305,7 +364,7 @@ public class MaskedDateField extends JTextField {
         internalUpdate = false;
       }
 
-      final int caretPos = pos < editablePositions.length ? pos : editablePositions.length;
+      final int caretPos = findNextEditablePosition(pos);
       SwingUtilities.invokeLater(
           () -> {
             setCaretPosition(caretPos);
@@ -352,26 +411,54 @@ public class MaskedDateField extends JTextField {
 
   private class MaskKeyListener extends KeyAdapter {
     @Override
+    public void keyTyped(KeyEvent e) {
+      char typedChar = e.getKeyChar();
+      int pos = getCaretPosition();
+      if (isSectionSeparatorKey(typedChar)) {
+        int nextSectionStart = findNextSectionStart(pos);
+        if (nextSectionStart > pos && nextSectionStart <= editablePositions.length) {
+          setCaretPosition(nextSectionStart);
+        }
+        e.consume();
+      }
+    }
+
+    @Override
     public void keyPressed(KeyEvent e) {
       int pos = getCaretPosition();
       if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
-        int next = pos + 1;
-        while (next < editablePositions.length && !editablePositions[next]) {
-          next++;
-        }
+        int next = findNextEditablePosition(pos + 1);
         if (next <= editablePositions.length) {
           setCaretPosition(next);
           e.consume();
         }
       } else if (e.getKeyCode() == KeyEvent.VK_LEFT) {
-        int prev = pos - 1;
-        while (prev >= 0 && !editablePositions[prev]) {
-          prev--;
-        }
+        int prev = findPreviousEditablePosition(pos - 1);
         if (prev >= 0) {
           setCaretPosition(prev);
           e.consume();
         }
+      } else if (e.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
+        int target = -1;
+        if (isEditablePosition(pos) && getText().charAt(pos) != '_') {
+          target = pos;
+        } else {
+          target = findPreviousEditablePosition(pos - 1);
+        }
+        if (target >= 0) {
+          clearEditablePosition(target);
+          setCaretPosition(target);
+          onTextChanged();
+        }
+        e.consume();
+      } else if (e.getKeyCode() == KeyEvent.VK_DELETE) {
+        int target = isEditablePosition(pos) ? pos : findNextEditablePosition(pos);
+        if (target >= 0 && target < editablePositions.length) {
+          clearEditablePosition(target);
+          setCaretPosition(target);
+          onTextChanged();
+        }
+        e.consume();
       }
     }
   }

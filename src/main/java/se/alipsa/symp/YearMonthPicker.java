@@ -3,6 +3,7 @@ package se.alipsa.symp;
 import static java.awt.Image.SCALE_SMOOTH;
 
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -153,15 +154,26 @@ public class YearMonthPicker extends JPanel {
 
     add(inputField);
 
-    ImageIcon icon = icon("/calendar.png", 20, 20);
+    ImageIcon icon = icon("/calendar.png", 30, 30);
     if (icon != null) {
       pickerButton = new JButton(icon);
     } else {
       pickerButton = new JButton();
     }
     inputField.setLabelFor(pickerButton);
+    pickerButton.setMargin(new java.awt.Insets(0, 1, 0, 1));
+    pickerButton.setIconTextGap(0);
+    updatePickerButtonSize();
     pickerButton.addActionListener(a -> showHideSelectBox());
     add(pickerButton);
+  }
+
+  private void updatePickerButtonSize() {
+    Dimension inputSize = inputField.getPreferredSize();
+    int side = Math.max(inputSize.height, 34);
+    Dimension buttonSize = new Dimension(side, side);
+    pickerButton.setPreferredSize(buttonSize);
+    pickerButton.setMinimumSize(buttonSize);
   }
 
   private ImageIcon icon(String path, int width, int height) {

@@ -2,7 +2,9 @@
 [![Maven Central](https://img.shields.io/maven-central/v/se.alipsa/swing-widgets)](https://central.sonatype.com/artifact/se.alipsa/swing-widgets)
 [![javadoc](https://javadoc.io/badge2/se.alipsa/swing-widgets/javadoc.svg)](https://javadoc.io/doc/se.alipsa/swing-widgets)
 
-Useful Swing components for java 11 or higher (tested with jdk 11 and 17).
+Useful Swing components for java 11 or higher (tested with jdk 11, 17, 21, and 25).
+
+<img src="examples/AllControlsDemoScreenshot.png" alt="">
 
 ## YearMonth Picker
 A year-month date picker component for java swing.
@@ -39,7 +41,7 @@ the release section or add the following to your maven file:
 <dependency>
   <groupId>se.alipsa</groupId>
   <artifactId>swing-widgets</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 ...or the equivalent to you favorite build tool.

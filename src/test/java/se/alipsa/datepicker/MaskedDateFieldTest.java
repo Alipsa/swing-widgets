@@ -267,7 +267,9 @@ class MaskedDateFieldTest {
         () -> {
           field.setCaretPosition(5);
           for (int keyCode :
-              new int[] {KeyEvent.VK_BACK_SPACE, KeyEvent.VK_DELETE, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT}) {
+              new int[] {
+                KeyEvent.VK_BACK_SPACE, KeyEvent.VK_DELETE, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT
+              }) {
             KeyEvent event =
                 new KeyEvent(
                     field,

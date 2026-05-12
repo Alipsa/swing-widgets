@@ -256,4 +256,79 @@ class MaskedDateFieldTest {
     assertEquals("202_-_4-18", field.getText());
     assertEquals(3, field.getCaretPosition());
   }
+
+  @Test
+  void testNonEditableKeyPressedDoesNotChangeTextOrCaret() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+    field.setDate(LocalDate.of(2026, 4, 18));
+    field.setEditable(false);
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.setCaretPosition(5);
+          for (int keyCode :
+              new int[] {KeyEvent.VK_BACK_SPACE, KeyEvent.VK_DELETE, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT}) {
+            KeyEvent event =
+                new KeyEvent(
+                    field,
+                    KeyEvent.KEY_PRESSED,
+                    System.currentTimeMillis(),
+                    0,
+                    keyCode,
+                    KeyEvent.CHAR_UNDEFINED);
+            field.getKeyListeners()[0].keyPressed(event);
+            assertTrue(event.isConsumed());
+          }
+        });
+
+    assertEquals("2026-04-18", field.getText());
+    assertEquals(5, field.getCaretPosition());
+  }
+
+  @Test
+  void testNonEditableKeyTypedDoesNotMoveCaret() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+    field.setEditable(false);
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.setCaretPosition(4);
+          KeyEvent dash =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_TYPED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_UNDEFINED,
+                  '-');
+          field.getKeyListeners()[0].keyTyped(dash);
+          assertTrue(dash.isConsumed());
+        });
+
+    assertEquals(4, field.getCaretPosition());
+  }
+
+  @Test
+  void testNonEditableDocumentChangesAreIgnoredButSetDateStillWorks() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.getDefault());
+    field.setEditable(false);
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          try {
+            field.getDocument().insertString(0, "20260418", null);
+            field.getDocument().remove(0, 1);
+          } catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("____-__-__", field.getText());
+
+    field.setDate(LocalDate.of(2026, 4, 18));
+
+    assertEquals("2026-04-18", field.getText());
+    assertEquals(LocalDate.of(2026, 4, 18), field.getDate());
+  }
 }

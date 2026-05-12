@@ -333,6 +333,10 @@ public class MaskedDateField extends JTextField {
         return;
       }
 
+      if (!isEditable()) {
+        return;
+      }
+
       if (text == null || text.isEmpty()) {
         return;
       }
@@ -379,6 +383,10 @@ public class MaskedDateField extends JTextField {
         return;
       }
 
+      if (!isEditable()) {
+        return;
+      }
+
       StringBuilder result =
           new StringBuilder(fb.getDocument().getText(0, fb.getDocument().getLength()));
       for (int i = offset; i < offset + length && i < editablePositions.length; i++) {
@@ -412,6 +420,11 @@ public class MaskedDateField extends JTextField {
   private class MaskKeyListener extends KeyAdapter {
     @Override
     public void keyTyped(KeyEvent e) {
+      if (!isEditable()) {
+        e.consume();
+        return;
+      }
+
       char typedChar = e.getKeyChar();
       int pos = getCaretPosition();
       if (isSectionSeparatorKey(typedChar)) {
@@ -425,6 +438,11 @@ public class MaskedDateField extends JTextField {
 
     @Override
     public void keyPressed(KeyEvent e) {
+      if (!isEditable()) {
+        e.consume();
+        return;
+      }
+
       int pos = getCaretPosition();
       if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
         int next = findNextEditablePosition(pos + 1);

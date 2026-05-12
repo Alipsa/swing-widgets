@@ -1,5 +1,9 @@
 # Swing Widgets release history
 
+## v1.1.1, 2026-05-12
+- Changed src/main/java/se/alipsa/datepicker/MaskedDateField.java:336 so editable=false now blocks document replace/remove operations and consumes typed/pressed key events before Backspace, Delete, or
+  Arrow handling can mutate text or move the caret.
+
 ## v1.1.0, 2026-04-18
 Adds a new date picker toolkit for Swing with:
 

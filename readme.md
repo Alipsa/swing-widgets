@@ -41,7 +41,7 @@ the release section or add the following to your maven file:
 <dependency>
   <groupId>se.alipsa</groupId>
   <artifactId>swing-widgets</artifactId>
-  <version>1.1.0</version>
+  <version>1.1.1</version>
 </dependency>
 ```
 ...or the equivalent to you favorite build tool.

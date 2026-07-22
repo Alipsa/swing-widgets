@@ -42,7 +42,10 @@ public class YearMonthPickerCombo extends JComboBox<YearMonth> {
    * @param initial the initially selected month
    */
   public YearMonthPickerCombo(YearMonth initial) {
-    this(initial.minusYears(3), initial.plusYears(3), initial);
+    this(
+        initial != null ? initial.minusYears(3) : YearMonth.now().minusYears(3),
+        initial != null ? initial.plusYears(3) : YearMonth.now().plusYears(3),
+        initial);
   }
 
   /**

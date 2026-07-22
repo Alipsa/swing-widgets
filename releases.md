@@ -2,6 +2,11 @@
 
 ## v1.1.2, 2026-07-22
 - The date popup now uses the monitor containing the invoking date field, rather than the primary screen, and respects that monitor’s usable bounds.
+- `YearMonthPicker`'s popup now respects the configured month range as soon as it opens, instead of briefly offering out-of-range months until you paged the year.
+- Fixed `YearMonthPicker` accumulating duplicate popup listeners after repeated open/close cycles, which could fire selection callbacks more than once per click.
+- `YearMonthPicker.setSelectedItem(...)` now rejects months outside the configured range, matching `DatePicker`'s behavior.
+- `YearMonthPicker` and `YearMonthPickerCombo` no longer throw when constructed with a `null` initial month.
+- Fixed a rare crash in `YearMonthPicker` when its calendar icon resource could not be loaded.
 
 ## v1.1.1, 2026-05-12
 - Changed src/main/java/se/alipsa/datepicker/MaskedDateField.java:336 so editable=false now blocks document replace/remove operations and consumes typed/pressed key events before Backspace, Delete, or

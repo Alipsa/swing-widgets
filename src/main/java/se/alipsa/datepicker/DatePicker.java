@@ -420,10 +420,7 @@ public class DatePicker extends JPanel {
   }
 
   static Point popupLocation(
-      Point preferredLocation,
-      Point anchorLocation,
-      Dimension popupSize,
-      Rectangle usableBounds) {
+      Point preferredLocation, Point anchorLocation, Dimension popupSize, Rectangle usableBounds) {
     int x =
         Math.max(
             usableBounds.x,
@@ -434,8 +431,7 @@ public class DatePicker extends JPanel {
     }
     y =
         Math.max(
-            usableBounds.y,
-            Math.min(y, usableBounds.y + usableBounds.height - popupSize.height));
+            usableBounds.y, Math.min(y, usableBounds.y + usableBounds.height - popupSize.height));
     return new Point(x, y);
   }
 

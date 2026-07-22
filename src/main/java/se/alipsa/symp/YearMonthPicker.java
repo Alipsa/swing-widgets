@@ -79,7 +79,12 @@ public class YearMonthPicker extends JPanel {
    * @param locale the locale used for rendering
    */
   public YearMonthPicker(YearMonth initial, Locale locale) {
-    this(initial.minusYears(3), initial.plusYears(3), initial, locale, "MMMM");
+    this(
+        initial != null ? initial.minusYears(3) : YearMonth.now().minusYears(3),
+        initial != null ? initial.plusYears(3) : YearMonth.now().plusYears(3),
+        initial,
+        locale,
+        "MMMM");
   }
 
   /**
@@ -166,6 +171,25 @@ public class YearMonthPicker extends JPanel {
     updatePickerButtonSize();
     pickerButton.addActionListener(a -> showHideSelectBox());
     add(pickerButton);
+
+    initListView();
+  }
+
+  private void initListView() {
+    HoverListCellRenderer.register(listView);
+    listView.addListSelectionListener(
+        l -> {
+          YearMonth newYearMonth = listView.getSelectedValue();
+          if (newYearMonth == null) {
+            return;
+          }
+          inputField.setText(yearMonthFormatter.format(newYearMonth));
+          setSelectedItem(newYearMonth);
+          if (popup != null) {
+            popup.hide();
+            popup = null;
+          }
+        });
   }
 
   private void updatePickerButtonSize() {
@@ -177,8 +201,10 @@ public class YearMonthPicker extends JPanel {
   }
 
   private ImageIcon icon(String path, int width, int height) {
-    try {
-      InputStream is = getClass().getResourceAsStream(path);
+    try (InputStream is = getClass().getResourceAsStream(path)) {
+      if (is == null) {
+        return null;
+      }
       BufferedImage buttonIcon = ImageIO.read(is);
       return new ImageIcon(
           new ImageIcon(buttonIcon).getImage().getScaledInstance(width, height, SCALE_SMOOTH));
@@ -196,14 +222,17 @@ public class YearMonthPicker extends JPanel {
     }
 
     JPanel selectBox = new JPanel(new BorderLayout());
-    JLabel yearLabel = new JLabel(String.valueOf(getSelectedItem().getYear()));
+    YearMonth base = getSelectedItem() != null ? getSelectedItem() : YearMonth.now();
+    JLabel yearLabel = new JLabel(String.valueOf(base.getYear()));
 
     DefaultListModel<YearMonth> listModel = new DefaultListModel<>();
     for (int i = 1; i <= 12; i++) {
-      listModel.addElement(YearMonth.of(Integer.parseInt(yearLabel.getText()), i));
+      YearMonth val = YearMonth.of(base.getYear(), i);
+      if (!val.isBefore(startYearMonth) && !val.isAfter(endYearMonth)) {
+        listModel.addElement(val);
+      }
     }
     listView.setModel(listModel);
-    HoverListCellRenderer.register(listView);
 
     JPanel top = new JPanel(new FlowLayout());
     selectBox.add(top, BorderLayout.NORTH);
@@ -246,20 +275,6 @@ public class YearMonthPicker extends JPanel {
 
     selectBox.add(listView, BorderLayout.CENTER);
 
-    listView.addListSelectionListener(
-        l -> {
-          YearMonth newYearMonth = listView.getSelectedValue();
-          if (newYearMonth == null) {
-            return;
-          }
-          inputField.setText(yearMonthFormatter.format(newYearMonth));
-          setSelectedItem(newYearMonth);
-          if (popup != null) {
-            popup.hide();
-            popup = null;
-          }
-        });
-
     int layoutX = (int) (getLocationOnScreen().getX() + pickerButton.getBounds().getX());
     int layoutY = (int) (getLocationOnScreen().getY() + pickerButton.getBounds().getY());
     PopupFactory factory = PopupFactory.getSharedInstance();
@@ -282,6 +297,7 @@ public class YearMonthPicker extends JPanel {
    * @param locale the locale to use
    */
   public void setLocale(Locale locale) {
+    super.setLocale(locale);
     this.locale = locale;
   }
 
@@ -361,7 +377,14 @@ public class YearMonthPicker extends JPanel {
    * @param selectedItem the month to select
    */
   public void setSelectedItem(YearMonth selectedItem) {
+    if (selectedItem != null && !isMonthAllowed(selectedItem)) {
+      return;
+    }
     this.selectedItem = selectedItem;
+  }
+
+  private boolean isMonthAllowed(YearMonth yearMonth) {
+    return !yearMonth.isBefore(startYearMonth) && !yearMonth.isAfter(endYearMonth);
   }
 
   /**

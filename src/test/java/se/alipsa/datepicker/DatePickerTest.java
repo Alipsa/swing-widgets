@@ -2,12 +2,39 @@ package se.alipsa.datepicker;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.awt.Dimension;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
 class DatePickerTest {
+
+  @Test
+  void testPopupLocationUsesTheAnchorScreenBounds() {
+    Point location =
+        DatePicker.popupLocation(
+            new Point(2100, 500),
+            new Point(2100, 450),
+            new Dimension(300, 300),
+            new Rectangle(1920, 0, 1920, 1080));
+
+    assertEquals(new Point(2100, 500), location);
+  }
+
+  @Test
+  void testPopupLocationMovesAboveTheAnchorAtBottomOfScreen() {
+    Point location =
+        DatePicker.popupLocation(
+            new Point(2100, 1000),
+            new Point(2100, 950),
+            new Dimension(300, 300),
+            new Rectangle(1920, 0, 1920, 1080));
+
+    assertEquals(new Point(2100, 650), location);
+  }
 
   @Test
   void testDefaultConstructor() {

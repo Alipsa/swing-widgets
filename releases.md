@@ -1,5 +1,8 @@
 # Swing Widgets release history
 
+## v1.1.2, 2026-07-22
+- The date popup now uses the monitor containing the invoking date field, rather than the primary screen, and respects that monitor’s usable bounds.
+
 ## v1.1.1, 2026-05-12
 - Changed src/main/java/se/alipsa/datepicker/MaskedDateField.java:336 so editable=false now blocks document replace/remove operations and consumes typed/pressed key events before Backspace, Delete, or
   Arrow handling can mutate text or move the caret.

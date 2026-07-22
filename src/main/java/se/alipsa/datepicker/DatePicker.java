@@ -3,11 +3,14 @@ package se.alipsa.datepicker;
 import static java.awt.Image.SCALE_SMOOTH;
 
 import java.awt.Dimension;
+import java.awt.GraphicsConfiguration;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.KeyboardFocusManager;
 import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
@@ -376,18 +379,21 @@ public class DatePicker extends JPanel {
     popupWindow.pack();
 
     Point loc = textField.getLocationOnScreen();
-    int x = loc.x;
-    int y = loc.y + textField.getHeight();
-
-    Dimension screenSize = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
-    if (x + popupWindow.getWidth() > screenSize.width) {
-      x = screenSize.width - popupWindow.getWidth();
-    }
-    if (y + popupWindow.getHeight() > screenSize.height) {
-      y = loc.y - popupWindow.getHeight();
-    }
-
-    popupWindow.setLocation(x, y);
+    GraphicsConfiguration graphicsConfiguration = textField.getGraphicsConfiguration();
+    Rectangle bounds = graphicsConfiguration.getBounds();
+    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(graphicsConfiguration);
+    Rectangle usableBounds =
+        new Rectangle(
+            bounds.x + insets.left,
+            bounds.y + insets.top,
+            bounds.width - insets.left - insets.right,
+            bounds.height - insets.top - insets.bottom);
+    popupWindow.setLocation(
+        popupLocation(
+            new Point(loc.x, loc.y + textField.getHeight()),
+            loc,
+            popupWindow.getSize(),
+            usableBounds));
     popupWindow.setVisible(true);
 
     popupWindow.addWindowFocusListener(
@@ -411,6 +417,26 @@ public class DatePicker extends JPanel {
                 });
           }
         });
+  }
+
+  static Point popupLocation(
+      Point preferredLocation,
+      Point anchorLocation,
+      Dimension popupSize,
+      Rectangle usableBounds) {
+    int x =
+        Math.max(
+            usableBounds.x,
+            Math.min(preferredLocation.x, usableBounds.x + usableBounds.width - popupSize.width));
+    int y = preferredLocation.y;
+    if (y + popupSize.height > usableBounds.y + usableBounds.height) {
+      y = anchorLocation.y - popupSize.height;
+    }
+    y =
+        Math.max(
+            usableBounds.y,
+            Math.min(y, usableBounds.y + usableBounds.height - popupSize.height));
+    return new Point(x, y);
   }
 
   /** Closes the popup calendar if it is open. */

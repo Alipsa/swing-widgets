@@ -2,6 +2,14 @@
          xmlns="http://mojo.codehaus.org/versions-maven-plugin/rule/2.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://mojo.codehaus.org/versions-maven-plugin/rule/2.0.0 http://www.mojohaus.org/versions-maven-plugin/xsd/rule-2.0.0.xsd">
+  <rules>
+    <rule groupId="org.junit.jupiter">
+      <!-- junit 6 requires java 17 or higher; this project still targets java 11 -->
+      <ignoreVersions>
+        <ignoreVersion type="regex">^[6-9]\d*\..*</ignoreVersion>
+      </ignoreVersions>
+    </rule>
+  </rules>
   <ignoreVersions>
     <ignoreVersion type="regex">.*-preview</ignoreVersion>
     <ignoreVersion type="regex">.*[-_\.](alpha|Alpha|ALPHA|b|B|beta|Beta|BETA|rc|RC|M|ea|EA|pr)[-_+\.]?[0-9]*</ignoreVersion>

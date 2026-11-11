@@ -1,5 +1,8 @@
 # Swing Widgets release history
 
+## v1.1.3, 2026-11-11
+- `DatePicker`: the masked text field now declares a minimum size equal to its preferred size. Previously, a GridBagLayout container narrower than the row's preferred width collapsed the picker to just the calendar button, leaving the entered date set but invisible. The fix re-applies automatically when `setLocale()` rebuilds the text field.
+
 ## v1.1.2, 2026-07-22
 - The date popup now uses the monitor containing the invoking date field, rather than the primary screen, and respects that monitor’s usable bounds.
 - `YearMonthPicker`'s popup now respects the configured month range as soon as it opens, instead of briefly offering out-of-range months until you paged the year.

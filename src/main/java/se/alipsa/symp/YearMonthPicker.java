@@ -46,6 +46,8 @@ import javax.swing.event.ListSelectionListener;
 /** A year-month picker that combines a label with a popup month selector. */
 public class YearMonthPicker extends JPanel {
 
+  private static final System.Logger LOG = System.getLogger(YearMonthPicker.class.getName());
+
   private static final String HIDE_POPUP_ACTION = "hideYearMonthPopup";
 
   private Locale locale;
@@ -260,8 +262,7 @@ public class YearMonthPicker extends JPanel {
       try {
         listener.valueChanged(event);
       } catch (RuntimeException e) {
-        Thread thread = Thread.currentThread();
-        thread.getUncaughtExceptionHandler().uncaughtException(thread, e);
+        LOG.log(System.Logger.Level.WARNING, "YearMonthPicker listener threw an exception", e);
       }
     }
   }
@@ -522,9 +523,10 @@ public class YearMonthPicker extends JPanel {
   }
 
   /**
-   * Returns the initial month configured for the picker.
+   * Returns the initial month passed to the constructor. This is returned even when it was outside
+   * the range and therefore not selected; use {@link #getValue()} for the current selection.
    *
-   * @return the initial month
+   * @return the initial month as passed to the constructor, possibly {@code null}
    */
   public YearMonth getInitial() {
     return initial;

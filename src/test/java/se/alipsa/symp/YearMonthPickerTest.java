@@ -176,4 +176,12 @@ class YearMonthPickerTest {
                 .getListCellRendererComponent(picker.listView, value, 0, false, false))
         .getText();
   }
+
+  @Test
+  void testGetInitialReturnsTheConstructorArgumentEvenWhenRejected() {
+    YearMonthPicker picker = new YearMonthPicker(FROM, TO, YearMonth.of(2025, 5));
+
+    assertEquals(YearMonth.of(2025, 5), picker.getInitial());
+    assertNull(picker.getValue());
+  }
 }

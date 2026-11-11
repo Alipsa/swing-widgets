@@ -48,9 +48,10 @@ import javax.swing.border.LineBorder;
 /** A standalone month calendar component with optional veto and highlight policies. */
 public class CalendarPanel extends JPanel {
 
+  private static final System.Logger LOG = System.getLogger(CalendarPanel.class.getName());
+
   // Fallbacks used when the look and feel does not define the corresponding UIManager color.
   private static final Color SELECTED_BG = new Color(163, 184, 204);
-  private static final Color SELECTED_BORDER = new Color(99, 130, 191);
   private static final Color OTHER_MONTH_FG = Color.LIGHT_GRAY;
   private static final Color VETOED_BG = new Color(240, 240, 240);
   private static final Color NORMAL_BG = Color.WHITE;
@@ -367,7 +368,7 @@ public class CalendarPanel extends JPanel {
         if (isSelected) {
           cell.setBackground(selectedBg);
           cell.setForeground(selectedFg);
-          cell.setBorder(new LineBorder(SELECTED_BORDER, 1));
+          cell.setBorder(new LineBorder(selectedBg.darker(), 1));
         } else if (isVetoed) {
           cell.setBackground(vetoedBg);
           cell.setForeground(isCurrentMonth ? normalFg : otherMonthFg);
@@ -576,8 +577,7 @@ public class CalendarPanel extends JPanel {
       try {
         listener.accept(date);
       } catch (RuntimeException e) {
-        Thread thread = Thread.currentThread();
-        thread.getUncaughtExceptionHandler().uncaughtException(thread, e);
+        LOG.log(System.Logger.Level.WARNING, "CalendarPanel listener threw an exception", e);
       }
     }
   }

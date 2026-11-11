@@ -2,6 +2,7 @@ package se.alipsa.datepicker;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.awt.Color;
 import java.awt.Font;
 import java.awt.event.KeyEvent;
 import java.awt.font.TextAttribute;
@@ -452,5 +453,30 @@ class MaskedDateFieldTest {
     field.setDate(LocalDate.of(2026, 1, 1));
 
     assertTrue(field.getFont().isBold());
+  }
+
+  @Test
+  void testTwoDigitYearDefaultsToTwentyFirstCentury() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    assertEquals("15/01/26", field.getText());
+    assertTrue(field.isDateValid());
+  }
+
+  @Test
+  void testCustomForegroundIsKeptAcrossEdits() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setForeground(Color.BLUE);
+
+    field.setDate(LocalDate.of(2026, 1, 1));
+    assertEquals(Color.BLUE, field.getForeground());
+
+    SwingUtilities.invokeAndWait(() -> field.setText("2026-13-01"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertNotEquals(Color.BLUE, field.getForeground(), "invalid text is still marked");
+
+    field.setDate(LocalDate.of(2026, 2, 1));
+    assertEquals(Color.BLUE, field.getForeground());
   }
 }

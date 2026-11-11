@@ -14,7 +14,6 @@ import javax.swing.JList;
 /** List cell renderer that highlights the list item under the mouse cursor. */
 public class HoverListCellRenderer extends DefaultListCellRenderer {
 
-  private static final Color HOVER_COLOR = Color.LIGHT_GRAY;
   private int hoverIndex = -1;
   private DateTimeFormatter formatter;
 
@@ -54,9 +53,23 @@ public class HoverListCellRenderer extends DefaultListCellRenderer {
     super.getListCellRendererComponent(list, display, index, isSelected, cellHasFocus);
 
     if (!isSelected) {
-      setBackground(index == hoverIndex ? HOVER_COLOR : list.getBackground());
+      setBackground(
+          index == hoverIndex
+              ? blend(list.getBackground(), list.getSelectionBackground())
+              : list.getBackground());
     }
     return this;
+  }
+
+  /** Halfway between the list background and its selection color, so it suits any theme. */
+  private static Color blend(Color background, Color selection) {
+    if (background == null || selection == null) {
+      return selection != null ? selection : background;
+    }
+    return new Color(
+        (background.getRed() + selection.getRed() + 1) / 2,
+        (background.getGreen() + selection.getGreen() + 1) / 2,
+        (background.getBlue() + selection.getBlue() + 1) / 2);
   }
 
   /**

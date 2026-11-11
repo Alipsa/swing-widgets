@@ -10,8 +10,6 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -384,18 +382,21 @@ class DatePickerTest {
   }
 
   @Test
-  void testThrowingListenerIsReportedAndOthersStillRun() {
+  void testThrowingListenerDoesNotStopOtherListeners() {
     DatePicker picker = new DatePicker(LocalDate.of(2026, 1, 1), Locale.UK);
-    List<Throwable> reported = new ArrayList<>();
     int[] events = {0};
     picker.addListener(
         date -> {
-          throw new IllegalStateException("boom");
+          throw new IllegalStateException("boom (expected in this test)");
         });
     picker.addListener(date -> events[0]++);
     Thread thread = Thread.currentThread();
     Thread.UncaughtExceptionHandler original = thread.getUncaughtExceptionHandler();
-    thread.setUncaughtExceptionHandler((t, e) -> reported.add(e));
+    // The exception is logged; an application handler that rethrows must not be involved.
+    thread.setUncaughtExceptionHandler(
+        (t, e) -> {
+          throw new AssertionError("uncaught exception handler must not be called", e);
+        });
     try {
       picker.setDate(LocalDate.of(2026, 1, 2));
     } finally {
@@ -403,8 +404,6 @@ class DatePickerTest {
     }
 
     assertEquals(1, events[0]);
-    assertEquals(1, reported.size());
-    assertEquals("boom", reported.get(0).getMessage());
   }
 
   @Test
@@ -418,5 +417,42 @@ class DatePickerTest {
       assertTrue(field.isDateValid(), tag);
       assertEquals(field.getMaskTemplate().length(), field.getText().length(), tag);
     }
+  }
+
+  @Test
+  void testMissingRangeBoundsAreDerivedFromInitialDate() {
+    LocalDate initial = LocalDate.of(1990, 1, 1);
+
+    DatePicker open = new DatePicker(null, null, initial, Locale.UK);
+    assertEquals(initial, open.getDate());
+    assertEquals(initial.minusYears(20), open.getStart());
+    assertEquals(initial.plusYears(20), open.getEnd());
+
+    DatePicker onlyTo = new DatePicker(null, LocalDate.of(2000, 1, 1), initial, Locale.UK);
+    assertEquals(initial, onlyTo.getDate());
+    assertEquals(initial.minusYears(20), onlyTo.getStart());
+  }
+
+  @Test
+  void testTwoDigitYearPatternUsesWindowCoveringTheRange() throws Exception {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(1970, 1, 1),
+            LocalDate.of(2030, 12, 31),
+            LocalDate.of(1995, 5, 1),
+            Locale.UK,
+            "dd/MM/yy");
+
+    assertEquals(LocalDate.of(1995, 5, 1), picker.getDate());
+    assertEquals("01/05/95", picker.getTextField().getText());
+    assertTrue(picker.getTextField().isDateValid());
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("010698"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertEquals(LocalDate.of(1998, 6, 1), picker.getDate());
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("010625"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertEquals(LocalDate.of(2025, 6, 1), picker.getDate());
   }
 }

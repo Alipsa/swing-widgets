@@ -177,8 +177,10 @@ __DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale, Str
 Full control over range, locale, and date pattern (e.g. "yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy").
 
 Dates outside the range, or rejected by the veto policy, cannot be selected or typed; an initial date outside
-the range leaves the picker empty. The date pattern may only contain numeric fields (`yy`/`yyyy`, `MM`, `dd`),
-separators and quoted literals.
+the range leaves the picker empty. A missing `from` or `to` defaults to 20 years before or after the initial date
+(or today). The date pattern may only contain numeric fields (`yy`/`yyyy`, `MM`, `dd`), separators and quoted
+literals. Two-digit years are read in the 100-year window that covers the picker's range (the most recent 100 years
+of it if the range is longer).
 
 In the popup calendar the arrow keys move between days and weeks, Page Up/Page Down change month,
 Home/End jump to the start/end of the month, Enter or Space selects, and Escape closes the popup.

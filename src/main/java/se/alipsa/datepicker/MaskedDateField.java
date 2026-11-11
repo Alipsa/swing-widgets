@@ -9,7 +9,9 @@ import java.awt.event.KeyEvent;
 import java.awt.font.TextAttribute;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +20,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
@@ -27,15 +28,20 @@ import javax.swing.text.PlainDocument;
 /** A text field that enforces a date mask and parses valid input into {@link LocalDate} values. */
 public class MaskedDateField extends JTextField {
 
+  private static final System.Logger LOG = System.getLogger(MaskedDateField.class.getName());
+  // Red is used on every look and feel to flag text that is not a date.
   private static final Color INVALID_COLOR = Color.RED;
-  private static final Color NORMAL_COLOR = Color.BLACK;
+
+  /** Two-digit years are read as 2000-2099 unless a date range says otherwise. */
+  private static final LocalDate DEFAULT_TWO_DIGIT_YEAR_BASE = LocalDate.of(2000, 1, 1);
 
   private final String datePattern;
   private final Locale locale;
-  private final DateTimeFormatter formatter;
+  private DateTimeFormatter formatter;
   private final String maskTemplate;
   private final boolean[] editablePositions;
   private Font baseFont;
+  private Color baseForeground;
 
   private LocalDate lastValidDate;
   private DateVetoPolicy vetoPolicy;
@@ -49,7 +55,9 @@ public class MaskedDateField extends JTextField {
    *
    * <p>The pattern may only contain numeric year ({@code yy}, {@code yyyy}, {@code uu}, {@code
    * uuuu}), month ({@code MM}) and day ({@code dd}) fields, separators, and quoted literals such as
-   * {@code 'г'}.
+   * {@code 'г'}. Two-digit years are read as 2000&ndash;2099; inside a {@link DatePicker} they are
+   * read in the 100-year window that covers the picker's range (the most recent 100 years of it if
+   * the range is longer).
    *
    * @param datePattern the date format pattern used for display and parsing
    * @param locale the locale used for parsing and formatting
@@ -59,10 +67,11 @@ public class MaskedDateField extends JTextField {
   public MaskedDateField(String datePattern, Locale locale) {
     this.datePattern = datePattern;
     this.locale = locale;
-    this.formatter = DateTimeFormatter.ofPattern(datePattern, locale);
+    DateTimeFormatter.ofPattern(datePattern, locale); // validates the pattern syntax
     StringBuilder mask = new StringBuilder();
     this.editablePositions = buildMask(datePattern, mask);
     this.maskTemplate = mask.toString();
+    this.formatter = buildFormatter(datePattern, locale, DEFAULT_TWO_DIGIT_YEAR_BASE);
     this.baseFont = getFont();
 
     setColumns(maskTemplate.length());
@@ -163,6 +172,69 @@ public class MaskedDateField extends JTextField {
     return positions;
   }
 
+  /**
+   * Builds the formatter for {@code pattern}, equivalent to {@link
+   * DateTimeFormatter#ofPattern(String, Locale)} except that two-digit years ({@code yy}, {@code
+   * uu}) are read in the 100-year window starting at {@code twoDigitYearBase}.
+   */
+  private static DateTimeFormatter buildFormatter(
+      String pattern, Locale locale, LocalDate twoDigitYearBase) {
+    DateTimeFormatterBuilder builder = new DateTimeFormatterBuilder();
+    StringBuilder chunk = new StringBuilder();
+    int i = 0;
+    while (i < pattern.length()) {
+      char c = pattern.charAt(i);
+      if (c == '\'') {
+        int end = i + 1;
+        while (end < pattern.length()) {
+          if (pattern.charAt(end) == '\'') {
+            if (end + 1 < pattern.length() && pattern.charAt(end + 1) == '\'') {
+              end += 2;
+              continue;
+            }
+            break;
+          }
+          end++;
+        }
+        chunk.append(pattern, i, Math.min(end + 1, pattern.length()));
+        i = end + 1;
+      } else if (c == 'y' || c == 'u') {
+        int end = i;
+        while (end < pattern.length() && pattern.charAt(end) == c) {
+          end++;
+        }
+        if (end - i == 2) {
+          if (chunk.length() > 0) {
+            builder.appendPattern(chunk.toString());
+            chunk.setLength(0);
+          }
+          builder.appendValueReduced(
+              c == 'y' ? ChronoField.YEAR_OF_ERA : ChronoField.YEAR, 2, 2, twoDigitYearBase);
+        } else {
+          chunk.append(pattern, i, end);
+        }
+        i = end;
+      } else {
+        chunk.append(c);
+        i++;
+      }
+    }
+    if (chunk.length() > 0) {
+      builder.appendPattern(chunk.toString());
+    }
+    return builder.toFormatter(locale);
+  }
+
+  /** Start of the 100-year window for two-digit years that best covers the given range. */
+  private static LocalDate twoDigitYearBase(LocalDate from, LocalDate to) {
+    if (from == null && to == null) {
+      return DEFAULT_TWO_DIGIT_YEAR_BASE;
+    }
+    int fromYear = from != null ? from.getYear() : Integer.MIN_VALUE;
+    int latestStart = to != null ? to.getYear() - 99 : Integer.MIN_VALUE;
+    return LocalDate.of(Math.max(fromYear, latestStart), 1, 1);
+  }
+
   private static boolean isSupportedField(char letter, int count) {
     switch (letter) {
       case 'y':
@@ -254,6 +326,7 @@ public class MaskedDateField extends JTextField {
   void setDateRange(LocalDate from, LocalDate to) {
     this.rangeFrom = from;
     this.rangeTo = to;
+    this.formatter = buildFormatter(datePattern, locale, twoDigitYearBase(from, to));
     updateVisualState();
   }
 
@@ -328,29 +401,41 @@ public class MaskedDateField extends JTextField {
   private void updateVisualState() {
     String text = getText();
     if (hasUnfilledPositions(text)) {
-      setForeground(normalForeground());
+      super.setForeground(baseForeground);
       setFont(baseFont);
       return;
     }
 
     LocalDate parsed = parseText();
     if (parsed == null) {
-      setForeground(INVALID_COLOR);
+      super.setForeground(INVALID_COLOR);
       setFont(baseFont);
     } else if (!isDateAllowed(parsed)) {
-      setForeground(normalForeground());
+      super.setForeground(baseForeground);
       Map<TextAttribute, Object> attrs = new HashMap<>(baseFont.getAttributes());
       attrs.put(TextAttribute.STRIKETHROUGH, TextAttribute.STRIKETHROUGH_ON);
       setFont(baseFont.deriveFont(attrs));
     } else {
-      setForeground(normalForeground());
+      super.setForeground(baseForeground);
       setFont(baseFont);
     }
   }
 
-  private static Color normalForeground() {
-    Color color = UIManager.getColor("TextField.foreground");
-    return color != null ? color : NORMAL_COLOR;
+  /**
+   * Sets the text color used for valid and incomplete input. Text that is not a date is still shown
+   * in red.
+   *
+   * @param color the foreground color
+   */
+  @Override
+  public void setForeground(Color color) {
+    baseForeground = color;
+    if (editablePositions == null) {
+      // Called by the look and feel while the superclass is being constructed.
+      super.setForeground(color);
+    } else {
+      updateVisualState();
+    }
   }
 
   /**
@@ -466,8 +551,7 @@ public class MaskedDateField extends JTextField {
       try {
         listener.accept(date);
       } catch (RuntimeException e) {
-        Thread thread = Thread.currentThread();
-        thread.getUncaughtExceptionHandler().uncaughtException(thread, e);
+        LOG.log(System.Logger.Level.WARNING, "MaskedDateField listener threw an exception", e);
       }
     }
   }

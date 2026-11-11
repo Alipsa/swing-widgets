@@ -42,6 +42,8 @@ import javax.swing.SwingUtilities;
 /** A date picker component that combines a masked text field with a popup calendar. */
 public class DatePicker extends JPanel {
 
+  private static final System.Logger LOG = System.getLogger(DatePicker.class.getName());
+
   private Locale locale;
   private final LocalDate rangeFrom;
   private final LocalDate rangeTo;
@@ -108,9 +110,13 @@ public class DatePicker extends JPanel {
   /**
    * Creates a date picker with an explicit date range using the default locale.
    *
-   * @param from the earliest allowed date
-   * @param to the latest allowed date
-   * @param initial the initial date to show and select
+   * @param from the earliest allowed date, or {@code null} for 20 years before {@code initial} (or
+   *     today)
+   * @param to the latest allowed date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initial date to show and select, or {@code null} for an empty picker; a date
+   *     outside the range leaves the picker empty
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}
    */
   public DatePicker(LocalDate from, LocalDate to, LocalDate initial) {
     this(from, to, initial, Locale.getDefault());
@@ -119,10 +125,14 @@ public class DatePicker extends JPanel {
   /**
    * Creates a date picker with an explicit date range and locale.
    *
-   * @param from the earliest allowed date
-   * @param to the latest allowed date
-   * @param initial the initial date to show and select
+   * @param from the earliest allowed date, or {@code null} for 20 years before {@code initial} (or
+   *     today)
+   * @param to the latest allowed date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initial date to show and select, or {@code null} for an empty picker; a date
+   *     outside the range leaves the picker empty
    * @param locale the locale used for formatting and calendar labels
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}
    */
   public DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale) {
     this(from, to, initial, locale, null, true);
@@ -131,13 +141,16 @@ public class DatePicker extends JPanel {
   /**
    * Creates a date picker with full control over range, locale, and date pattern.
    *
-   * @param from the earliest allowed date
-   * @param to the latest allowed date
-   * @param initial the initial date to show and select
+   * @param from the earliest allowed date, or {@code null} for 20 years before {@code initial} (or
+   *     today)
+   * @param to the latest allowed date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initial date to show and select, or {@code null} for an empty picker; a date
+   *     outside the range leaves the picker empty
    * @param locale the locale used for formatting and calendar labels
    * @param datePattern the date pattern used in the text field
-   * @throws IllegalArgumentException if {@code from} is after {@code to}, or if the pattern is not
-   *     supported by {@link MaskedDateField}
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}, or if the
+   *     pattern is not supported by {@link MaskedDateField}
    */
   public DatePicker(
       LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern) {
@@ -152,8 +165,11 @@ public class DatePicker extends JPanel {
       String datePattern,
       boolean usesDerivedPattern) {
     this.locale = locale != null ? locale : Locale.getDefault();
-    this.rangeFrom = from != null ? from : LocalDate.now().minusYears(20);
-    this.rangeTo = to != null ? to : LocalDate.now().plusYears(20);
+    // Missing bounds are filled around the initial date, like CalendarPanel and the
+    // year-month pickers do, so an initial date never falls outside a bound the caller did not set.
+    LocalDate base = initial != null ? initial : LocalDate.now();
+    this.rangeFrom = from != null ? from : base.minusYears(20);
+    this.rangeTo = to != null ? to : base.plusYears(20);
     if (rangeFrom.isAfter(rangeTo)) {
       throw new IllegalArgumentException("'from' date must be before 'to' date");
     }
@@ -349,8 +365,7 @@ public class DatePicker extends JPanel {
       try {
         listener.accept(date);
       } catch (RuntimeException e) {
-        Thread thread = Thread.currentThread();
-        thread.getUncaughtExceptionHandler().uncaughtException(thread, e);
+        LOG.log(System.Logger.Level.WARNING, "DatePicker listener threw an exception", e);
       }
     }
   }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`se.alipsa:swing-widgets` is a small Swing component library with no runtime dependencies. It targets **Java 11** (`maven.compiler.release=11`) and is tested on JDK 11, 17, 21 and 25. Do not use APIs or language features newer than Java 11. JUnit is pinned to 5.x because JUnit 6 needs Java 17, and `version-plugin-rules.xml` stops `versions-maven-plugin` from suggesting 6.x.
+`se.alipsa:swing-widgets` is a small Swing component library with no runtime dependencies. It targets **Java 11** (`maven.compiler.release=11`) and is tested on JDK 11, 17, 21 and 25. Do not use APIs or language features newer than Java 11. JUnit is pinned to 5.x because JUnit 6 needs Java 17, and `version-plugin-rules.xml` stops `versions-maven-plugin` from suggesting 6.x. Running the full build (`mvn verify`) needs **JDK 17+**, because `spotless-maven-plugin` 3.x needs Java 17. The tests themselves still run on JDK 11 (e.g. `mvn package spotbugs:check`, which skips the Spotless check bound to `verify`).
 
 ## Commands
 
@@ -21,7 +21,7 @@ mvn versions:display-plugin-updates versions:display-dependency-updates
 - Javadoc runs with `doclint=all,-missing`, so malformed Javadoc on public API breaks the build.
 - Surefire runs with `useModulePath=false`, so tests run on the classpath even though there is a `module-info.java`.
 - Manual visual check: `examples/AllControlsDemo.groovy` (`groovy examples/AllControlsDemo.groovy`) shows every widget. It `@Grab`s a *published* version, not the local build. `DatePickerDemo` (in test sources) and the `main` methods in `YearMonthPicker`/`YearMonthPickerCombo` are small launchers.
-- Release: `release.sh` switches to JDK 11 through SDKMAN if it can, then runs `mvn -Prelease clean site deploy` (GPG signing plus Sonatype Central). `relocate.sh`/`relocation-pom.xml` publish the relocation POM for the old `swing-yearmonth-picker` artifact. You normally won't need these.
+- Release: `release.sh` keeps the current JDK if it is 17+, otherwise switches to an installed 21, 17 or 25 through SDKMAN (and stops if none is found), then runs `mvn -Prelease clean site deploy` (GPG signing plus Sonatype Central). `relocate.sh`/`relocation-pom.xml` publish the relocation POM for the old `swing-yearmonth-picker` artifact. You normally won't need these.
 - Record user-facing changes in `release.md` (release history, newest first). The dependency version in `readme.md` is updated by hand.
 
 ## Architecture

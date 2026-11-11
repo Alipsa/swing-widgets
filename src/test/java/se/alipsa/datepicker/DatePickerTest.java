@@ -478,4 +478,35 @@ class DatePickerTest {
     assertEquals(LocalDate.of(1926, 6, 1), hundredYears.getDate());
     assertTrue(hundredYears.getTextField().isDateValid());
   }
+
+  @Test
+  void testTextFieldRangeIsManagedByThePicker() {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(2000, 1, 1),
+            LocalDate.of(2050, 12, 31),
+            LocalDate.of(2026, 1, 1),
+            Locale.UK,
+            "dd/MM/yy");
+
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            picker
+                .getTextField()
+                .setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31)));
+
+    picker.setDate(LocalDate.of(2030, 6, 1));
+    assertEquals(LocalDate.of(2030, 6, 1), picker.getDate());
+    assertEquals("01/06/30", picker.getTextField().getText());
+    assertEquals(LocalDate.of(2030, 6, 1), picker.getTextField().getDate());
+  }
+
+  @Test
+  void testTextFieldRangeIsStillManagedAfterLocaleChange() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 1, 1), Locale.US);
+    picker.setLocale(Locale.GERMANY);
+
+    assertThrows(IllegalStateException.class, () -> picker.getTextField().setDateRange(null, null));
+  }
 }

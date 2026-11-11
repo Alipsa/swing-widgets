@@ -49,6 +49,7 @@ public class MaskedDateField extends JTextField {
 
   // No initializer: updateUI() runs during the superclass constructor.
   private boolean updatingUI;
+  private boolean rangeManagedByPicker;
 
   private LocalDate lastValidDate;
   private DateVetoPolicy vetoPolicy;
@@ -353,14 +354,34 @@ public class MaskedDateField extends JTextField {
    *
    * <p>For a pattern with a two-digit year this also sets the 100-year window the year is read in:
    * it starts at {@code from} (or 99 years before {@code to} if that is later). If the current date
-   * falls outside the new window, the field is cleared.
+   * falls outside the new window, or the text would read as a different date in it, the field is
+   * reset.
+   *
+   * <p>The range of a field owned by a {@link DatePicker} is managed by the picker and cannot be
+   * changed here.
    *
    * @param from the earliest accepted date, or {@code null} for no lower bound
    * @param to the latest accepted date, or {@code null} for no upper bound
    * @throws IllegalArgumentException if {@code from} is after {@code to}, or if the pattern has a
    *     two-digit year and the range spans more than 100 years
+   * @throws IllegalStateException if this field belongs to a {@link DatePicker}
    */
   public void setDateRange(LocalDate from, LocalDate to) {
+    if (rangeManagedByPicker) {
+      throw new IllegalStateException(
+          "The range of a DatePicker's text field is managed by the picker; create the DatePicker"
+              + " with the range instead");
+    }
+    applyDateRange(from, to);
+  }
+
+  /** Sets the range on behalf of a {@link DatePicker}, which then owns it. */
+  void setManagedDateRange(LocalDate from, LocalDate to) {
+    rangeManagedByPicker = true;
+    applyDateRange(from, to);
+  }
+
+  private void applyDateRange(LocalDate from, LocalDate to) {
     if (from != null && to != null && from.isAfter(to)) {
       throw new IllegalArgumentException("'from' date must be before 'to' date");
     }
@@ -378,6 +399,7 @@ public class MaskedDateField extends JTextField {
               + to
               + " (more than 100 years); use a four-digit year pattern");
     }
+    LocalDate shownBefore = parseText();
     this.rangeFrom = from;
     this.rangeTo = to;
     this.formatter = buildFormatter(datePattern, locale, base);
@@ -386,6 +408,12 @@ public class MaskedDateField extends JTextField {
       if (lastValidDate != null && !isInTwoDigitYearWindow(lastValidDate)) {
         // Its two-digit text would now read as a date in the new window.
         setDate(null);
+        return;
+      }
+      if (shownBefore != null && !shownBefore.equals(parseText())) {
+        // The text (e.g. a struck-through vetoed date) now reads as a different date; show the
+        // actual value instead so text and value cannot disagree.
+        setDate(lastValidDate);
         return;
       }
     }

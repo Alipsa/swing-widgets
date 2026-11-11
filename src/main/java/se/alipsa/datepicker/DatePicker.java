@@ -256,7 +256,7 @@ public class DatePicker extends JPanel {
   private void rebuildTextField(LocalDate date, boolean enabled) {
     textField = new MaskedDateField(datePattern, locale);
     textField.addListener(this::onTextFieldDateChanged);
-    textField.setDateRange(rangeFrom, rangeTo);
+    textField.setManagedDateRange(rangeFrom, rangeTo);
     textField.setVetoPolicy(vetoPolicy);
     if (date != null) {
       textField.setDate(date);
@@ -344,9 +344,10 @@ public class DatePicker extends JPanel {
 
   private void onCalendarDateSelected(LocalDate date) {
     if (date != null && isDateAllowed(date)) {
+      // Update the field first, so the picker is unchanged if it rejects the date.
+      textField.setDate(date);
       LocalDate previous = lastValidDate;
       lastValidDate = date;
-      textField.setDate(date);
       closePopup();
       if (previous == null || !previous.equals(date)) {
         fireListeners(date);
@@ -389,13 +390,10 @@ public class DatePicker extends JPanel {
     if (date != null && !isDateAllowed(date)) {
       return;
     }
+    // Update the field first, so the picker is unchanged if it rejects the date.
+    textField.setDate(date);
     LocalDate previous = lastValidDate;
     lastValidDate = date;
-    if (date != null) {
-      textField.setDate(date);
-    } else {
-      textField.setDate(null);
-    }
     if (previous == null ? date != null : !previous.equals(date)) {
       fireListeners(date);
     }
@@ -681,7 +679,8 @@ public class DatePicker extends JPanel {
    * Returns the masked text field used by the picker.
    *
    * <p>The returned instance is replaced when {@link #setLocale(Locale)} rebuilds the field, so
-   * callers must not cache it across locale changes.
+   * callers must not cache it across locale changes. Its date range is managed by the picker:
+   * {@link MaskedDateField#setDateRange} throws {@link IllegalStateException} on it.
    *
    * @return the current text field component
    */

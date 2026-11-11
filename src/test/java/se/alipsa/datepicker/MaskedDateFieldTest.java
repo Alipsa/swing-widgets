@@ -581,4 +581,31 @@ class MaskedDateFieldTest {
         IllegalArgumentException.class,
         () -> field.setDateRange(LocalDate.of(1850, 1, 1), LocalDate.of(2100, 1, 1)));
   }
+
+  @Test
+  void testSetDateRangeClearsStruckThroughTextThatWouldReadAsAnotherDate() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setVetoPolicy(date -> date.getYear() != 2026);
+    field.setDate(LocalDate.of(2026, 1, 15)); // vetoed: shown struck through, no value
+    assertEquals("15/01/26", field.getText());
+    assertFalse(field.isDateValid());
+
+    field.setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31));
+
+    // "15/01/26" would now read as a valid 1926 date while getDate() is null.
+    assertEquals(field.getMaskTemplate(), field.getText());
+    assertNull(field.getDate());
+    assertFalse(field.isDateValid());
+  }
+
+  @Test
+  void testSetDateRangeKeepsTextThatStillMeansTheSameDate() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    field.setDateRange(LocalDate.of(2000, 1, 1), LocalDate.of(2050, 12, 31));
+
+    assertEquals("15/01/26", field.getText());
+    assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
+  }
 }

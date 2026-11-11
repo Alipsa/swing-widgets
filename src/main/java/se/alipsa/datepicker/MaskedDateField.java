@@ -62,10 +62,9 @@ public class MaskedDateField extends JTextField {
    *
    * <p>The pattern may only contain numeric year ({@code yy}, {@code yyyy}, {@code uu}, {@code
    * uuuu}), month ({@code MM}) and day ({@code dd}) fields, separators, and quoted literals such as
-   * {@code 'г'}. Two-digit years are read as 2000&ndash;2099; inside a {@link DatePicker} they are
-   * read in the 100-year window that covers the picker's range, and a range longer than 100 years
-   * is rejected. Dates outside the window are not accepted, since their text would read as a
-   * different date.
+   * {@code 'г'}. Two-digit years are read as 2000&ndash;2099 unless {@link #setDateRange} moves
+   * that window (a {@link DatePicker} does this for its range). {@link #setDate} rejects dates
+   * outside the window, since their text would read as a different date.
    *
    * @param datePattern the date format pattern used for display and parsing
    * @param locale the locale used for parsing and formatting
@@ -276,11 +275,21 @@ public class MaskedDateField extends JTextField {
    * Sets the field to the supplied date.
    *
    * @param date the date to display, or {@code null} to clear the field
+   * @throws IllegalArgumentException if the pattern has a two-digit year and {@code date} is
+   *     outside its 100-year window (see {@link #setDateRange})
    */
   public void setDate(LocalDate date) {
     if (date != null && !isInTwoDigitYearWindow(date)) {
       // The text would show a different date (e.g. 1995 as "95", which reads as 2095).
-      return;
+      throw new IllegalArgumentException(
+          date
+              + " cannot be shown with the two-digit year pattern '"
+              + datePattern
+              + "', which covers the years "
+              + twoDigitYearStart.getYear()
+              + "-"
+              + (twoDigitYearStart.getYear() + 99)
+              + "; use setDateRange(...) to move that window or a four-digit year pattern");
     }
     internalUpdate = true;
     try {
@@ -339,10 +348,22 @@ public class MaskedDateField extends JTextField {
   }
 
   /**
-   * Restricts accepted dates to the inclusive range; {@code null} leaves that side open. Used by
-   * {@link DatePicker} so typed out-of-range dates are rejected like vetoed ones.
+   * Restricts accepted dates to the inclusive range; {@code null} leaves that side open. Dates
+   * outside the range are shown struck through and are not accepted, like vetoed dates.
+   *
+   * <p>For a pattern with a two-digit year this also sets the 100-year window the year is read in:
+   * it starts at {@code from} (or 99 years before {@code to} if that is later). If the current date
+   * falls outside the new window, the field is cleared.
+   *
+   * @param from the earliest accepted date, or {@code null} for no lower bound
+   * @param to the latest accepted date, or {@code null} for no upper bound
+   * @throws IllegalArgumentException if {@code from} is after {@code to}, or if the pattern has a
+   *     two-digit year and the range spans more than 100 years
    */
-  void setDateRange(LocalDate from, LocalDate to) {
+  public void setDateRange(LocalDate from, LocalDate to) {
+    if (from != null && to != null && from.isAfter(to)) {
+      throw new IllegalArgumentException("'from' date must be before 'to' date");
+    }
     LocalDate base = twoDigitYearBase(from, to);
     if (twoDigitYearStart != null
         && from != null
@@ -362,6 +383,11 @@ public class MaskedDateField extends JTextField {
     this.formatter = buildFormatter(datePattern, locale, base);
     if (twoDigitYearStart != null) {
       this.twoDigitYearStart = base;
+      if (lastValidDate != null && !isInTwoDigitYearWindow(lastValidDate)) {
+        // Its two-digit text would now read as a date in the new window.
+        setDate(null);
+        return;
+      }
     }
     updateVisualState();
   }

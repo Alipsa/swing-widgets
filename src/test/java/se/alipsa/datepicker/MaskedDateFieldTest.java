@@ -532,12 +532,53 @@ class MaskedDateFieldTest {
   }
 
   @Test
-  void testTwoDigitYearFieldIgnoresDatesOutsideItsWindow() {
+  void testTwoDigitYearFieldRejectsDatesOutsideItsWindow() {
     MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
 
-    field.setDate(LocalDate.of(1995, 6, 1));
+    IllegalArgumentException error =
+        assertThrows(IllegalArgumentException.class, () -> field.setDate(LocalDate.of(1995, 5, 1)));
 
+    assertTrue(error.getMessage().contains("2000"), error.getMessage());
+    assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
+    assertEquals("15/01/26", field.getText());
+  }
+
+  @Test
+  void testSetDateRangeMovesTheTwoDigitYearWindow() throws Exception {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31));
+
+    field.setDate(LocalDate.of(1995, 5, 1));
+    assertEquals(LocalDate.of(1995, 5, 1), field.getDate());
+    assertEquals("01/05/95", field.getText());
+    assertTrue(field.isDateValid());
+
+    SwingUtilities.invokeAndWait(() -> field.setText("010698"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertEquals(LocalDate.of(1998, 6, 1), field.getDate());
+  }
+
+  @Test
+  void testSetDateRangeClearsDateOutsideTheNewWindow() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    field.setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31));
+
+    // "26" would now read as 1926, so the 2026 date cannot stay.
     assertNull(field.getDate());
     assertEquals(field.getMaskTemplate(), field.getText());
+  }
+
+  @Test
+  void testSetDateRangeValidatesTheRange() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> field.setDateRange(LocalDate.of(2021, 1, 1), LocalDate.of(2020, 1, 1)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> field.setDateRange(LocalDate.of(1850, 1, 1), LocalDate.of(2100, 1, 1)));
   }
 }

@@ -9,7 +9,12 @@ import java.awt.font.TextAttribute;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.Locale;
+import javax.swing.LookAndFeel;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.plaf.ColorUIResource;
+import javax.swing.plaf.FontUIResource;
+import javax.swing.plaf.metal.MetalLookAndFeel;
 import org.junit.jupiter.api.Test;
 
 class MaskedDateFieldTest {
@@ -478,5 +483,61 @@ class MaskedDateFieldTest {
 
     field.setDate(LocalDate.of(2026, 2, 1));
     assertEquals(Color.BLUE, field.getForeground());
+  }
+
+  @Test
+  void testLookAndFeelChangeWhileInvalidAppliesNewThemeColor() throws Exception {
+    LookAndFeel originalLaf = UIManager.getLookAndFeel();
+    // Metal only replaces UIResource values on update; some platform themes (e.g. Aqua) always do.
+    UIManager.setLookAndFeel(new MetalLookAndFeel());
+    Object originalForeground = UIManager.get("TextField.foreground");
+    try {
+      MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+      SwingUtilities.invokeAndWait(() -> field.setText("2026-13-01"));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(Color.RED, field.getForeground());
+
+      ColorUIResource themeColor = new ColorUIResource(0, 128, 0);
+      UIManager.put("TextField.foreground", themeColor);
+      field.updateUI();
+      field.setDate(LocalDate.of(2026, 1, 1));
+
+      assertEquals(themeColor, field.getForeground());
+    } finally {
+      UIManager.put("TextField.foreground", originalForeground);
+      UIManager.setLookAndFeel(originalLaf);
+    }
+  }
+
+  @Test
+  void testLookAndFeelChangeWhileStruckThroughAppliesNewThemeFont() throws Exception {
+    LookAndFeel originalLaf = UIManager.getLookAndFeel();
+    UIManager.setLookAndFeel(new MetalLookAndFeel());
+    Object originalFont = UIManager.get("TextField.font");
+    try {
+      MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+      field.setVetoPolicy(date -> date.getDayOfWeek().getValue() != 7);
+      field.setDate(LocalDate.of(2026, 4, 19)); // a Sunday, shown struck through
+
+      FontUIResource themeFont = new FontUIResource("Serif", Font.BOLD, 30);
+      UIManager.put("TextField.font", themeFont);
+      field.updateUI();
+      field.setDate(LocalDate.of(2026, 4, 20));
+
+      assertEquals(themeFont, field.getFont());
+    } finally {
+      UIManager.put("TextField.font", originalFont);
+      UIManager.setLookAndFeel(originalLaf);
+    }
+  }
+
+  @Test
+  void testTwoDigitYearFieldIgnoresDatesOutsideItsWindow() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+
+    field.setDate(LocalDate.of(1995, 6, 1));
+
+    assertNull(field.getDate());
+    assertEquals(field.getMaskTemplate(), field.getText());
   }
 }

@@ -149,8 +149,9 @@ public class DatePicker extends JPanel {
    *     outside the range leaves the picker empty
    * @param locale the locale used for formatting and calendar labels
    * @param datePattern the date pattern used in the text field
-   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}, or if the
-   *     pattern is not supported by {@link MaskedDateField}
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}, if the
+   *     pattern is not supported by {@link MaskedDateField}, or if a two-digit-year pattern is
+   *     combined with a range longer than 100 years
    */
   public DatePicker(
       LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern) {

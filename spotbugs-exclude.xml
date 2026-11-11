@@ -24,6 +24,13 @@
     <Class name="se.alipsa.datepicker.MaskedDateField"/>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
   </Match>
+  <!-- updateUI() is called by the JTextComponent constructor; it checks editablePositions == null
+       first and only touches the other fields once construction is complete. -->
+  <Match>
+    <Class name="se.alipsa.datepicker.MaskedDateField"/>
+    <Method name="updateUI"/>
+    <Bug pattern="UR_UNINIT_READ_CALLED_FROM_SUPER_CONSTRUCTOR"/>
+  </Match>
   <Match>
     <Class name="se.alipsa.symp.YearMonthPicker"/>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>

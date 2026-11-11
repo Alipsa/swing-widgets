@@ -455,4 +455,27 @@ class DatePickerTest {
     SwingUtilities.invokeAndWait(() -> {});
     assertEquals(LocalDate.of(2025, 6, 1), picker.getDate());
   }
+
+  @Test
+  void testTwoDigitYearPatternRejectsRangesLongerThanOneHundredYears() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new DatePicker(
+                LocalDate.of(1850, 1, 1),
+                LocalDate.of(2100, 12, 31),
+                LocalDate.of(2000, 1, 1),
+                Locale.UK,
+                "dd/MM/yy"));
+
+    DatePicker hundredYears =
+        new DatePicker(
+            LocalDate.of(1926, 1, 1),
+            LocalDate.of(2025, 12, 31),
+            LocalDate.of(1926, 6, 1),
+            Locale.UK,
+            "dd/MM/yy");
+    assertEquals(LocalDate.of(1926, 6, 1), hundredYears.getDate());
+    assertTrue(hundredYears.getTextField().isDateValid());
+  }
 }

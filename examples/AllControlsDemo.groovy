@@ -1,6 +1,6 @@
 #!/usr/bin/env groovy
 
-@Grab('se.alipsa:swing-widgets:1.1.0')
+@Grab('se.alipsa:swing-widgets:1.1.3')
 
 import java.awt.BorderLayout
 import java.awt.Color
@@ -9,6 +9,7 @@ import java.awt.FlowLayout
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets
+import java.awt.Toolkit
 import java.time.LocalDate
 import java.time.YearMonth
 import javax.swing.BorderFactory
@@ -36,6 +37,8 @@ import se.alipsa.symp.YearMonthPickerCombo
 /**
  * Run with:
  *   groovy examples/AllControlsDemo.groovy
+ * Or use the current checkout instead of the published dependency:
+ *   ./run-demo.sh
  */
 void appendLog(JTextArea eventLog, String line) {
   eventLog.append("${line}\n")
@@ -109,7 +112,6 @@ SwingUtilities.invokeLater {
   }
 
   MaskedDateField maskedDateField = new MaskedDateField("yyyy-MM-dd", initialLocale)
-  maskedDateField.setBorder(titledBorder("MaskedDateField"))
   maskedDateField.setDate(LocalDate.now())
   maskedDateField.setVetoPolicy { date -> date.dayOfWeek.value < 6 }
   maskedDateField.addListener { date ->
@@ -117,7 +119,6 @@ SwingUtilities.invokeLater {
   }
 
   YearMonthPicker yearMonthPicker = new YearMonthPicker(YearMonth.now(), initialLocale)
-  yearMonthPicker.setBorder(titledBorder("YearMonthPicker"))
   yearMonthPicker.addListener {
     appendLog(eventLog, "YearMonthPicker -> ${yearMonthPicker.value}")
   }
@@ -129,7 +130,6 @@ SwingUtilities.invokeLater {
           YearMonth.now(),
           initialLocale,
           "MMM yyyy")
-  yearMonthPickerCombo.setBorder(titledBorder("YearMonthPickerCombo"))
   yearMonthPickerCombo.addActionListener {
     appendLog(eventLog, "YearMonthPickerCombo -> ${yearMonthPickerCombo.selectedItem}")
   }
@@ -213,8 +213,18 @@ SwingUtilities.invokeLater {
 
   JFrame frame = new JFrame("Swing Widgets Demo")
   frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
-  frame.contentPane = content
+  // Preserve the controls' preferred sizes and allow scrolling on smaller screens.
+  JScrollPane demoScrollPane = new JScrollPane(content)
+  demoScrollPane.border = BorderFactory.createEmptyBorder()
+  demoScrollPane.verticalScrollBar.unitIncrement = 16
+  demoScrollPane.horizontalScrollBar.unitIncrement = 16
+  frame.contentPane = demoScrollPane
   frame.pack()
+  def screenBounds = frame.graphicsConfiguration.bounds
+  Insets screenInsets = Toolkit.defaultToolkit.getScreenInsets(frame.graphicsConfiguration)
+  int usableWidth = screenBounds.width - screenInsets.left - screenInsets.right
+  int usableHeight = screenBounds.height - screenInsets.top - screenInsets.bottom
+  frame.setSize(Math.min(frame.width, usableWidth), Math.min(frame.height, usableHeight))
   frame.setLocationRelativeTo(null)
   frame.visible = true
 }

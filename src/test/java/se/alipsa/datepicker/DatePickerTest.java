@@ -3,11 +3,17 @@ package se.alipsa.datepicker;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.awt.Dimension;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.Locale;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
 import org.junit.jupiter.api.Test;
 
 class DatePickerTest {
@@ -272,5 +278,50 @@ class DatePickerTest {
     assertEquals(Locale.US, picker.getLocale());
     assertSame(originalTextField, picker.getTextField());
     assertEquals("MM/dd/yyyy", picker.getDatePattern());
+  }
+
+  @Test
+  void testTextFieldMinimumSizeMatchesPreferredSize() {
+    DatePicker picker = new DatePicker(null, null, null, Locale.US, "yyyy-MM-dd");
+
+    assertEquals(picker.getTextField().getPreferredSize(), picker.getTextField().getMinimumSize());
+  }
+
+  @Test
+  void testSetLocaleReappliesMinimumSizeToRebuiltTextField() {
+    DatePicker picker = new DatePicker(null, null, null, Locale.US, "yyyy-MM-dd");
+
+    picker.setLocale(Locale.GERMANY);
+
+    assertEquals(picker.getTextField().getPreferredSize(), picker.getTextField().getMinimumSize());
+  }
+
+  @Test
+  void testMinimumSizeKeepsPickerVisibleInNarrowGridBagRow() {
+    DatePicker picker = new DatePicker(null, null, null, Locale.US, "yyyy-MM-dd");
+    picker.setTextFieldPosition(TextFieldPosition.RIGHT);
+
+    JTextField filler = new JTextField(30);
+
+    JPanel row = new JPanel(new GridBagLayout());
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.gridx = 0;
+    gbc.gridy = 0;
+    gbc.anchor = GridBagConstraints.WEST;
+    gbc.insets = new Insets(4, 0, 4, 8);
+    row.add(new JLabel("Datum"), gbc);
+    gbc.gridx++;
+    row.add(picker, gbc);
+    gbc.gridx++;
+    gbc.weightx = 1.0;
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    row.add(filler, gbc);
+
+    row.setSize(row.getPreferredSize().width - 100, row.getPreferredSize().height);
+    row.doLayout();
+    picker.doLayout();
+
+    assertEquals(picker.getMinimumSize().width, picker.getWidth());
+    assertTrue(picker.getTextField().getWidth() > 0);
   }
 }

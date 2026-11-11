@@ -192,6 +192,10 @@ public class DatePicker extends JPanel {
       textField.setDate(date);
     }
     textField.setEnabled(enabled);
+    // The masked field has no meaningful minimum size of its own, so GridBagLayout
+    // would collapse the picker to just the calendar button when the container is
+    // narrower than the preferred row width.
+    textField.setMinimumSize(textField.getPreferredSize());
     if (calendarButton != null) {
       updateCalendarButtonSize();
     }

@@ -608,4 +608,38 @@ class MaskedDateFieldTest {
     assertEquals("15/01/26", field.getText());
     assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
   }
+
+  @Test
+  void testImpossibleDayOfMonthIsRejectedNotAdjusted() throws Exception {
+    for (String typed : new String[] {"2026-04-31", "2026-02-30", "2025-02-29"}) {
+      MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+      field.setDate(LocalDate.of(2026, 1, 1));
+      java.util.List<LocalDate> fired = new java.util.ArrayList<>();
+      field.addListener(fired::add);
+
+      SwingUtilities.invokeAndWait(() -> field.setText(typed));
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertFalse(field.isDateValid(), typed);
+      assertEquals(LocalDate.of(2026, 1, 1), field.getDate(), typed);
+      assertTrue(fired.isEmpty(), typed);
+      assertEquals(Color.RED, field.getForeground(), typed);
+
+      Method revert = MaskedDateField.class.getDeclaredMethod("revertIfInvalid");
+      revert.setAccessible(true);
+      revert.invoke(field);
+      assertEquals("2026-01-01", field.getText(), typed);
+    }
+  }
+
+  @Test
+  void testLeapDayIsAccepted() throws Exception {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+
+    SwingUtilities.invokeAndWait(() -> field.setText("290228"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals(LocalDate.of(2028, 2, 29), field.getDate());
+    assertTrue(field.isDateValid());
+  }
 }

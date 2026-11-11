@@ -509,4 +509,19 @@ class DatePickerTest {
 
     assertThrows(IllegalStateException.class, () -> picker.getTextField().setDateRange(null, null));
   }
+
+  @Test
+  void testImpossibleDayOfMonthDoesNotChangeThePickerValue() throws Exception {
+    DatePicker picker =
+        new DatePicker(null, null, LocalDate.of(2026, 4, 1), Locale.UK, "dd/MM/yyyy");
+    int[] events = {0};
+    picker.addListener(date -> events[0]++);
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("31042026"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("31/04/2026", picker.getTextField().getText());
+    assertEquals(LocalDate.of(2026, 4, 1), picker.getDate());
+    assertEquals(0, events[0]);
+  }
 }

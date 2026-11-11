@@ -472,7 +472,11 @@ public class MaskedDateField extends JTextField {
       return null;
     }
     try {
-      return LocalDate.parse(text, formatter);
+      LocalDate parsed = LocalDate.parse(text, formatter);
+      // The default (SMART) resolver turns an impossible day such as 2026-04-31 into the last day
+      // of the month; only accept text that is exactly how the parsed date is written. (STRICT
+      // would also reject every yyyy pattern, since year-of-era needs an era field.)
+      return formatter.format(parsed).equals(text) ? parsed : null;
     } catch (DateTimeParseException e) {
       return null;
     }

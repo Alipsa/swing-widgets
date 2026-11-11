@@ -680,7 +680,10 @@ public class DatePicker extends JPanel {
    *
    * <p>The returned instance is replaced when {@link #setLocale(Locale)} rebuilds the field, so
    * callers must not cache it across locale changes. Its date range is managed by the picker:
-   * {@link MaskedDateField#setDateRange} throws {@link IllegalStateException} on it.
+   * {@link MaskedDateField#setDateRange} throws {@link IllegalStateException} on it. Change the
+   * date and veto policy through the picker ({@link #setDate}, {@link #setVetoPolicy}); calling
+   * {@code setDate} or {@code setVetoPolicy} on the field directly does not notify the picker, so
+   * {@link #getDate()} would no longer match the field.
    *
    * @return the current text field component
    */

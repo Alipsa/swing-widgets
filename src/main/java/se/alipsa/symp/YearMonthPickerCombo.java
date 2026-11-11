@@ -74,29 +74,44 @@ public class YearMonthPickerCombo extends JComboBox<YearMonth> {
   /**
    * Creates a combo box with an explicit range, locale, and display format.
    *
-   * @param from the first available month
-   * @param to the last available month
-   * @param initial the initially selected month
-   * @param locale the locale used for rendering
-   * @param format the display format for list entries
+   * @param from the first available month, or {@code null} for three years before {@code initial}
+   *     (or now)
+   * @param to the last available month, or {@code null} for three years after {@code initial} (or
+   *     now)
+   * @param initial the initially selected month, or {@code null} for no selection; a month outside
+   *     the range is not selected
+   * @param locale the locale used for rendering, or {@code null} for the default locale
+   * @param format the display format for list entries, or {@code null} for {@code yyyy-MM}
+   * @throws IllegalArgumentException if {@code from} is after {@code to}
    */
   public YearMonthPickerCombo(
       YearMonth from, YearMonth to, YearMonth initial, Locale locale, String format) {
-    YearMonth ym = from;
-    while (!ym.isAfter(to)) {
+    YearMonth base = initial != null ? initial : YearMonth.now();
+    YearMonth start = from != null ? from : base.minusYears(3);
+    YearMonth end = to != null ? to : base.plusYears(3);
+    if (start.isAfter(end)) {
+      throw new IllegalArgumentException("'from' month must not be after 'to' month");
+    }
+    YearMonth ym = start;
+    while (!ym.isAfter(end)) {
       addItem(ym);
       ym = ym.plusMonths(1);
     }
-    getModel().setSelectedItem(initial);
-    DateTimeFormatter formatter = DateTimeFormatter.ofPattern(format, locale);
+    boolean initialInRange = initial != null && !initial.isBefore(start) && !initial.isAfter(end);
+    getModel().setSelectedItem(initialInRange ? initial : null);
+    DateTimeFormatter formatter =
+        DateTimeFormatter.ofPattern(
+            format != null ? format : "yyyy-MM", locale != null ? locale : Locale.getDefault());
 
     setRenderer(
         new DefaultListCellRenderer() {
           @Override
           public Component getListCellRendererComponent(
               JList list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            // value is null when nothing is selected
+            Object display = value instanceof YearMonth ? formatter.format((YearMonth) value) : "";
             return super.getListCellRendererComponent(
-                list, formatter.format((YearMonth) value), index, isSelected, cellHasFocus);
+                list, display, index, isSelected, cellHasFocus);
           }
         });
   }

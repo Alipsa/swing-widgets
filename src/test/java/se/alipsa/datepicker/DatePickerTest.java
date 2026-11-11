@@ -14,6 +14,7 @@ import java.util.Locale;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class DatePickerTest {
@@ -323,5 +324,204 @@ class DatePickerTest {
 
     assertEquals(picker.getMinimumSize().width, picker.getWidth());
     assertTrue(picker.getTextField().getWidth() > 0);
+  }
+
+  @Test
+  void testInitialDateOutsideRangeLeavesPickerEmpty() {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31), LocalDate.of(2025, 5, 5));
+
+    assertNull(picker.getDate());
+    assertEquals(picker.getTextField().getMaskTemplate(), picker.getTextField().getText());
+  }
+
+  @Test
+  void testRangeIsValidatedAfterDefaultsAreApplied() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new DatePicker(null, LocalDate.of(1990, 1, 1), null, Locale.UK));
+  }
+
+  @Test
+  void testTypedDateOutsideRangeIsNotShownAsValue() throws Exception {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(2020, 1, 1),
+            LocalDate.of(2020, 12, 31),
+            LocalDate.of(2020, 6, 1),
+            Locale.UK,
+            "yyyy-MM-dd");
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("2021-06-01"));
+    SwingUtilities.invokeAndWait(() -> {});
+    Method revert = MaskedDateField.class.getDeclaredMethod("revertIfInvalid");
+    revert.setAccessible(true);
+    revert.invoke(picker.getTextField());
+
+    assertEquals(LocalDate.of(2020, 6, 1), picker.getDate());
+    assertEquals("2020-06-01", picker.getTextField().getText());
+  }
+
+  @Test
+  void testClearOnEmptyPickerDoesNotNotify() {
+    DatePicker picker = new DatePicker(null, null, null, Locale.UK);
+    int[] events = {0};
+    picker.addListener(date -> events[0]++);
+
+    picker.clear();
+
+    assertEquals(0, events[0]);
+  }
+
+  @Test
+  void testEscapeActionIsOnlyEnabledWhilePopupIsOpen() {
+    DatePicker picker = new DatePicker();
+    assertNotNull(picker.getActionMap().get(DatePicker.CLOSE_POPUP_ACTION));
+    assertFalse(picker.getActionMap().get(DatePicker.CLOSE_POPUP_ACTION).isEnabled());
+  }
+
+  @Test
+  void testThrowingListenerDoesNotStopOtherListeners() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 1, 1), Locale.UK);
+    int[] events = {0};
+    picker.addListener(
+        date -> {
+          throw new IllegalStateException("boom (expected in this test)");
+        });
+    picker.addListener(date -> events[0]++);
+    Thread thread = Thread.currentThread();
+    Thread.UncaughtExceptionHandler original = thread.getUncaughtExceptionHandler();
+    // The exception is logged; an application handler that rethrows must not be involved.
+    thread.setUncaughtExceptionHandler(
+        (t, e) -> {
+          throw new AssertionError("uncaught exception handler must not be called", e);
+        });
+    try {
+      picker.setDate(LocalDate.of(2026, 1, 2));
+    } finally {
+      thread.setUncaughtExceptionHandler(original);
+    }
+
+    assertEquals(1, events[0]);
+  }
+
+  @Test
+  void testDerivedPatternsRoundTripForAllAvailableLocales() {
+    LocalDate date = LocalDate.of(2026, 1, 15);
+    for (Locale locale : Locale.getAvailableLocales()) {
+      String pattern = DatePicker.derivePattern(locale);
+      MaskedDateField field = new MaskedDateField(pattern, locale);
+      field.setDate(date);
+      String tag = locale.toLanguageTag() + " " + pattern;
+      assertTrue(field.isDateValid(), tag);
+      assertEquals(field.getMaskTemplate().length(), field.getText().length(), tag);
+    }
+  }
+
+  @Test
+  void testMissingRangeBoundsAreDerivedFromInitialDate() {
+    LocalDate initial = LocalDate.of(1990, 1, 1);
+
+    DatePicker open = new DatePicker(null, null, initial, Locale.UK);
+    assertEquals(initial, open.getDate());
+    assertEquals(initial.minusYears(20), open.getStart());
+    assertEquals(initial.plusYears(20), open.getEnd());
+
+    DatePicker onlyTo = new DatePicker(null, LocalDate.of(2000, 1, 1), initial, Locale.UK);
+    assertEquals(initial, onlyTo.getDate());
+    assertEquals(initial.minusYears(20), onlyTo.getStart());
+  }
+
+  @Test
+  void testTwoDigitYearPatternUsesWindowCoveringTheRange() throws Exception {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(1970, 1, 1),
+            LocalDate.of(2030, 12, 31),
+            LocalDate.of(1995, 5, 1),
+            Locale.UK,
+            "dd/MM/yy");
+
+    assertEquals(LocalDate.of(1995, 5, 1), picker.getDate());
+    assertEquals("01/05/95", picker.getTextField().getText());
+    assertTrue(picker.getTextField().isDateValid());
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("010698"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertEquals(LocalDate.of(1998, 6, 1), picker.getDate());
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("010625"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertEquals(LocalDate.of(2025, 6, 1), picker.getDate());
+  }
+
+  @Test
+  void testTwoDigitYearPatternRejectsRangesLongerThanOneHundredYears() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new DatePicker(
+                LocalDate.of(1850, 1, 1),
+                LocalDate.of(2100, 12, 31),
+                LocalDate.of(2000, 1, 1),
+                Locale.UK,
+                "dd/MM/yy"));
+
+    DatePicker hundredYears =
+        new DatePicker(
+            LocalDate.of(1926, 1, 1),
+            LocalDate.of(2025, 12, 31),
+            LocalDate.of(1926, 6, 1),
+            Locale.UK,
+            "dd/MM/yy");
+    assertEquals(LocalDate.of(1926, 6, 1), hundredYears.getDate());
+    assertTrue(hundredYears.getTextField().isDateValid());
+  }
+
+  @Test
+  void testTextFieldRangeIsManagedByThePicker() {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(2000, 1, 1),
+            LocalDate.of(2050, 12, 31),
+            LocalDate.of(2026, 1, 1),
+            Locale.UK,
+            "dd/MM/yy");
+
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            picker
+                .getTextField()
+                .setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31)));
+
+    picker.setDate(LocalDate.of(2030, 6, 1));
+    assertEquals(LocalDate.of(2030, 6, 1), picker.getDate());
+    assertEquals("01/06/30", picker.getTextField().getText());
+    assertEquals(LocalDate.of(2030, 6, 1), picker.getTextField().getDate());
+  }
+
+  @Test
+  void testTextFieldRangeIsStillManagedAfterLocaleChange() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 1, 1), Locale.US);
+    picker.setLocale(Locale.GERMANY);
+
+    assertThrows(IllegalStateException.class, () -> picker.getTextField().setDateRange(null, null));
+  }
+
+  @Test
+  void testImpossibleDayOfMonthDoesNotChangeThePickerValue() throws Exception {
+    DatePicker picker =
+        new DatePicker(null, null, LocalDate.of(2026, 4, 1), Locale.UK, "dd/MM/yyyy");
+    int[] events = {0};
+    picker.addListener(date -> events[0]++);
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("31042026"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("31/04/2026", picker.getTextField().getText());
+    assertEquals(LocalDate.of(2026, 4, 1), picker.getDate());
+    assertEquals(0, events[0]);
   }
 }

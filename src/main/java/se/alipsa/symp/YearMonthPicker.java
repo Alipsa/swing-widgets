@@ -2,30 +2,53 @@ package se.alipsa.symp;
 
 import static java.awt.Image.SCALE_SMOOTH;
 
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GraphicsConfiguration;
+import java.awt.Insets;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
+import java.awt.event.ActionEvent;
+import java.awt.event.HierarchyBoundsAdapter;
+import java.awt.event.HierarchyEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Year;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import javax.imageio.ImageIO;
+import javax.swing.AbstractAction;
 import javax.swing.DefaultListModel;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.KeyStroke;
 import javax.swing.Popup;
 import javax.swing.PopupFactory;
+import javax.swing.SwingUtilities;
+import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
 /** A year-month picker that combines a label with a popup month selector. */
 public class YearMonthPicker extends JPanel {
+
+  private static final System.Logger LOG = System.getLogger(YearMonthPicker.class.getName());
+
+  private static final String HIDE_POPUP_ACTION = "hideYearMonthPopup";
 
   private Locale locale;
   private YearMonth startYearMonth;
@@ -33,10 +56,15 @@ public class YearMonthPicker extends JPanel {
   private YearMonth initial;
   private JLabel inputField;
   private String monthPattern;
+  private String yearMonthPattern;
   private Popup popup;
-  private final DateTimeFormatter yearMonthFormatter;
+  private AWTEventListener outsideClickListener;
+  private DateTimeFormatter yearMonthFormatter;
+  private DateTimeFormatter monthFormatter;
+  private HoverListCellRenderer listRenderer;
   private YearMonth selectedItem;
   private JButton pickerButton;
+  private final List<ListSelectionListener> listeners = new ArrayList<>();
 
   JList<YearMonth> listView = new JList<>();
 
@@ -127,12 +155,17 @@ public class YearMonthPicker extends JPanel {
   /**
    * Creates a picker with full control over range and formatting.
    *
-   * @param from the first available month
-   * @param to the last available month
-   * @param initial the initially selected month
-   * @param locale the locale used for rendering
-   * @param monthPattern the display pattern used in the popup
-   * @param yearMonthPattern the display pattern used in the input area
+   * @param from the first available month, or {@code null} for three years before {@code initial}
+   *     (or now)
+   * @param to the last available month, or {@code null} for three years after {@code initial} (or
+   *     now)
+   * @param initial the initially selected month, or {@code null} for no selection; a month outside
+   *     the range is not selected
+   * @param locale the locale used for rendering, or {@code null} for the default locale
+   * @param monthPattern the display pattern used in the popup, or {@code null} for {@code MMMM}
+   * @param yearMonthPattern the display pattern used in the input area, or {@code null} for {@code
+   *     yyyy-MM}
+   * @throws IllegalArgumentException if {@code from} is after {@code to}
    */
   public YearMonthPicker(
       YearMonth from,
@@ -141,21 +174,46 @@ public class YearMonthPicker extends JPanel {
       Locale locale,
       String monthPattern,
       String yearMonthPattern) {
-    setStart(from);
-    setEnd(to);
+    YearMonth base = initial != null ? initial : YearMonth.now();
+    YearMonth start = from != null ? from : base.minusYears(3);
+    YearMonth end = to != null ? to : base.plusYears(3);
+    if (start.isAfter(end)) {
+      throw new IllegalArgumentException("'from' month must not be after 'to' month");
+    }
+    setStart(start);
+    setEnd(end);
     setInitial(initial);
-    setLocale(locale);
-    setMonthPattern(monthPattern);
-    yearMonthFormatter = DateTimeFormatter.ofPattern(yearMonthPattern, locale);
+    this.locale = locale != null ? locale : Locale.getDefault();
+    super.setLocale(this.locale);
+    setMonthPattern(monthPattern != null ? monthPattern : "MMMM");
+    this.yearMonthPattern = yearMonthPattern != null ? yearMonthPattern : "yyyy-MM";
+    updateFormatters();
     createLayout();
+    installPopupCloseTriggers();
+  }
+
+  private void updateFormatters() {
+    yearMonthFormatter = DateTimeFormatter.ofPattern(yearMonthPattern, locale);
+    monthFormatter = DateTimeFormatter.ofPattern(monthPattern, locale);
+    if (listRenderer != null) {
+      listRenderer.setFormatter(monthFormatter);
+      listView.repaint();
+    }
+    updateInputField();
+  }
+
+  private void updateInputField() {
+    if (inputField != null) {
+      inputField.setText(selectedItem == null ? "" : yearMonthFormatter.format(selectedItem));
+    }
   }
 
   private void createLayout() {
     setLayout(new FlowLayout());
 
     setSelectedItem(initial);
-    String ymVal = initial == null ? "" : yearMonthFormatter.format(initial);
-    inputField = new JLabel(ymVal);
+    inputField = new JLabel();
+    updateInputField();
 
     add(inputField);
 
@@ -166,7 +224,7 @@ public class YearMonthPicker extends JPanel {
       pickerButton = new JButton();
     }
     inputField.setLabelFor(pickerButton);
-    pickerButton.setMargin(new java.awt.Insets(0, 1, 0, 1));
+    pickerButton.setMargin(new Insets(0, 1, 0, 1));
     pickerButton.setIconTextGap(0);
     updatePickerButtonSize();
     pickerButton.addActionListener(a -> showHideSelectBox());
@@ -176,20 +234,151 @@ public class YearMonthPicker extends JPanel {
   }
 
   private void initListView() {
-    HoverListCellRenderer.register(listView);
+    listRenderer = HoverListCellRenderer.register(listView);
+    listRenderer.setFormatter(monthFormatter);
     listView.addListSelectionListener(
         l -> {
-          YearMonth newYearMonth = listView.getSelectedValue();
-          if (newYearMonth == null) {
+          // Ignore the intermediate events of a mouse press and the event fired when the model
+          // is replaced (which clears the selection).
+          if (l.getValueIsAdjusting()) {
             return;
           }
-          inputField.setText(yearMonthFormatter.format(newYearMonth));
+          YearMonth newYearMonth = listView.getSelectedValue();
+          if (newYearMonth == null || !isMonthAllowed(newYearMonth)) {
+            return;
+          }
+          YearMonth previous = selectedItem;
           setSelectedItem(newYearMonth);
-          if (popup != null) {
-            popup.hide();
-            popup = null;
+          hidePopup();
+          if (!newYearMonth.equals(previous)) {
+            fireListeners(
+                new ListSelectionEvent(listView, l.getFirstIndex(), l.getLastIndex(), false));
           }
         });
+  }
+
+  private void fireListeners(ListSelectionEvent event) {
+    for (ListSelectionListener listener : new ArrayList<>(listeners)) {
+      try {
+        listener.valueChanged(event);
+      } catch (RuntimeException e) {
+        LOG.log(System.Logger.Level.WARNING, "YearMonthPicker listener threw an exception", e);
+      }
+    }
+  }
+
+  private void installPopupCloseTriggers() {
+    getInputMap(WHEN_IN_FOCUSED_WINDOW)
+        .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), HIDE_POPUP_ACTION);
+    getActionMap()
+        .put(
+            HIDE_POPUP_ACTION,
+            new AbstractAction() {
+              @Override
+              public boolean isEnabled() {
+                // Disabled while closed so Escape still reaches other components.
+                return popup != null;
+              }
+
+              @Override
+              public void actionPerformed(ActionEvent e) {
+                hidePopup();
+              }
+            });
+    addHierarchyListener(
+        e -> {
+          if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && !isShowing()) {
+            hidePopup();
+          }
+        });
+    addHierarchyBoundsListener(
+        new HierarchyBoundsAdapter() {
+          @Override
+          public void ancestorMoved(HierarchyEvent e) {
+            hidePopup();
+          }
+
+          @Override
+          public void ancestorResized(HierarchyEvent e) {
+            hidePopup();
+          }
+        });
+  }
+
+  private void hidePopup() {
+    if (popup == null) {
+      return;
+    }
+    popup.hide();
+    popup = null;
+    if (outsideClickListener != null) {
+      Toolkit.getDefaultToolkit().removeAWTEventListener(outsideClickListener);
+      outsideClickListener = null;
+    }
+  }
+
+  /** Closes the popup when the mouse is pressed anywhere outside it or the picker button. */
+  private void listenForOutsideClicks(JComponent selectBox) {
+    outsideClickListener =
+        event -> {
+          if (event.getID() != MouseEvent.MOUSE_PRESSED) {
+            return;
+          }
+          Object source = event.getSource();
+          if (source instanceof Component
+              && (SwingUtilities.isDescendingFrom((Component) source, selectBox)
+                  || SwingUtilities.isDescendingFrom((Component) source, pickerButton))) {
+            return;
+          }
+          hidePopup();
+        };
+    try {
+      Toolkit.getDefaultToolkit()
+          .addAWTEventListener(outsideClickListener, AWTEvent.MOUSE_EVENT_MASK);
+    } catch (SecurityException e) {
+      // Not permitted under a restrictive security manager; the other close triggers still work.
+      outsideClickListener = null;
+    }
+  }
+
+  /** Returns the months of {@code year} that are inside the configured range. */
+  List<YearMonth> monthsInRange(int year) {
+    List<YearMonth> months = new ArrayList<>();
+    for (int i = 1; i <= 12; i++) {
+      YearMonth val = YearMonth.of(year, i);
+      if (isMonthAllowed(val)) {
+        months.add(val);
+      }
+    }
+    return months;
+  }
+
+  /** The month whose year the popup opens on: the selection, or now clamped to the range. */
+  YearMonth popupBaseMonth() {
+    if (selectedItem != null) {
+      return selectedItem;
+    }
+    YearMonth now = YearMonth.now();
+    if (now.isBefore(startYearMonth)) {
+      return startYearMonth;
+    }
+    return now.isAfter(endYearMonth) ? endYearMonth : now;
+  }
+
+  static Point popupLocation(
+      Point preferredLocation, int anchorTop, Dimension popupSize, Rectangle usableBounds) {
+    int x =
+        Math.max(
+            usableBounds.x,
+            Math.min(preferredLocation.x, usableBounds.x + usableBounds.width - popupSize.width));
+    int y = preferredLocation.y;
+    if (y + popupSize.height > usableBounds.y + usableBounds.height) {
+      y = anchorTop - popupSize.height;
+    }
+    y =
+        Math.max(
+            usableBounds.y, Math.min(y, usableBounds.y + usableBounds.height - popupSize.height));
+    return new Point(x, y);
   }
 
   private void updatePickerButtonSize() {
@@ -216,22 +405,16 @@ public class YearMonthPicker extends JPanel {
   private void showHideSelectBox() {
 
     if (popup != null) {
-      popup.hide();
-      popup = null;
+      hidePopup();
       return;
     }
 
     JPanel selectBox = new JPanel(new BorderLayout());
-    YearMonth base = getSelectedItem() != null ? getSelectedItem() : YearMonth.now();
-    JLabel yearLabel = new JLabel(String.valueOf(base.getYear()));
+    int[] shownYear = {popupBaseMonth().getYear()};
+    JLabel yearLabel = new JLabel(String.valueOf(shownYear[0]));
 
     DefaultListModel<YearMonth> listModel = new DefaultListModel<>();
-    for (int i = 1; i <= 12; i++) {
-      YearMonth val = YearMonth.of(base.getYear(), i);
-      if (!val.isBefore(startYearMonth) && !val.isAfter(endYearMonth)) {
-        listModel.addElement(val);
-      }
-    }
+    monthsInRange(shownYear[0]).forEach(listModel::addElement);
     listView.setModel(listModel);
 
     JPanel top = new JPanel(new FlowLayout());
@@ -240,34 +423,24 @@ public class YearMonthPicker extends JPanel {
     JButton yearBackButton = new JButton("<");
     yearBackButton.addActionListener(
         e -> {
-          int yearNum = Year.parse(yearLabel.getText()).minusYears(1).getValue();
-          if (yearNum < startYearMonth.getYear()) {
+          if (shownYear[0] - 1 < startYearMonth.getYear()) {
             return;
           }
-          yearLabel.setText(String.valueOf(yearNum));
+          shownYear[0]--;
+          yearLabel.setText(String.valueOf(shownYear[0]));
           listModel.removeAllElements();
-          for (int i = 1; i <= 12; i++) {
-            YearMonth val = YearMonth.of(yearNum, i);
-            if (!val.isBefore(startYearMonth)) {
-              listModel.addElement(YearMonth.of(yearNum, i));
-            }
-          }
+          monthsInRange(shownYear[0]).forEach(listModel::addElement);
         });
     JButton yearForwardButton = new JButton(">");
     yearForwardButton.addActionListener(
         e -> {
-          int yearNum = Year.parse(yearLabel.getText()).plusYears(1).getValue();
-          if (yearNum > endYearMonth.getYear()) {
+          if (shownYear[0] + 1 > endYearMonth.getYear()) {
             return;
           }
-          yearLabel.setText(String.valueOf(yearNum));
+          shownYear[0]++;
+          yearLabel.setText(String.valueOf(shownYear[0]));
           listModel.removeAllElements();
-          for (int i = 1; i <= 12; i++) {
-            YearMonth val = YearMonth.of(yearNum, i);
-            if (!val.isAfter(endYearMonth)) {
-              listModel.addElement(val);
-            }
-          }
+          monthsInRange(shownYear[0]).forEach(listModel::addElement);
         });
     top.add(yearBackButton);
     top.add(yearLabel);
@@ -275,11 +448,27 @@ public class YearMonthPicker extends JPanel {
 
     selectBox.add(listView, BorderLayout.CENTER);
 
-    int layoutX = (int) (getLocationOnScreen().getX() + pickerButton.getBounds().getX());
-    int layoutY = (int) (getLocationOnScreen().getY() + pickerButton.getBounds().getY());
+    // Open below the picker button, kept inside the usable bounds of the monitor showing it.
+    Point buttonLocation = pickerButton.getLocationOnScreen();
+    GraphicsConfiguration graphicsConfiguration = pickerButton.getGraphicsConfiguration();
+    Rectangle bounds = graphicsConfiguration.getBounds();
+    Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(graphicsConfiguration);
+    Rectangle usableBounds =
+        new Rectangle(
+            bounds.x + insets.left,
+            bounds.y + insets.top,
+            bounds.width - insets.left - insets.right,
+            bounds.height - insets.top - insets.bottom);
+    Point location =
+        popupLocation(
+            new Point(buttonLocation.x, buttonLocation.y + pickerButton.getHeight()),
+            buttonLocation.y,
+            selectBox.getPreferredSize(),
+            usableBounds);
     PopupFactory factory = PopupFactory.getSharedInstance();
-    popup = factory.getPopup(this, selectBox, layoutX, layoutY);
+    popup = factory.getPopup(this, selectBox, location.x, location.y);
     popup.show();
+    listenForOutsideClicks(selectBox);
   }
 
   /**
@@ -292,13 +481,19 @@ public class YearMonthPicker extends JPanel {
   }
 
   /**
-   * Sets the locale used by this picker.
+   * Sets the locale used by this picker and re-renders the displayed value and popup months.
    *
-   * @param locale the locale to use
+   * @param locale the locale to use; {@code null} is ignored
    */
+  @Override
   public void setLocale(Locale locale) {
+    if (locale == null || locale.equals(this.locale)) {
+      return;
+    }
+    hidePopup();
     super.setLocale(locale);
     this.locale = locale;
+    updateFormatters();
   }
 
   /**
@@ -328,9 +523,10 @@ public class YearMonthPicker extends JPanel {
   }
 
   /**
-   * Returns the initial month configured for the picker.
+   * Returns the initial month passed to the constructor. This is returned even when it was outside
+   * the range and therefore not selected; use {@link #getValue()} for the current selection.
    *
-   * @return the initial month
+   * @return the initial month as passed to the constructor, possibly {@code null}
    */
   public YearMonth getInitial() {
     return initial;
@@ -372,15 +568,17 @@ public class YearMonthPicker extends JPanel {
   }
 
   /**
-   * Updates the currently selected month.
+   * Updates the currently selected month and the displayed value. Months outside the configured
+   * range are ignored. Listeners are not notified of programmatic changes.
    *
-   * @param selectedItem the month to select
+   * @param selectedItem the month to select, or {@code null} to clear the selection
    */
   public void setSelectedItem(YearMonth selectedItem) {
     if (selectedItem != null && !isMonthAllowed(selectedItem)) {
       return;
     }
     this.selectedItem = selectedItem;
+    updateInputField();
   }
 
   private boolean isMonthAllowed(YearMonth yearMonth) {
@@ -388,11 +586,11 @@ public class YearMonthPicker extends JPanel {
   }
 
   /**
-   * Registers a listener that is notified when the popup selection changes.
+   * Registers a listener that is notified when the user picks a different month in the popup.
    *
    * @param listener the listener to add
    */
   public void addListener(ListSelectionListener listener) {
-    listView.addListSelectionListener(listener);
+    listeners.add(listener);
   }
 }

@@ -2,11 +2,19 @@ package se.alipsa.datepicker;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.awt.Color;
+import java.awt.Font;
 import java.awt.event.KeyEvent;
 import java.awt.font.TextAttribute;
+import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.Locale;
+import javax.swing.LookAndFeel;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.plaf.ColorUIResource;
+import javax.swing.plaf.FontUIResource;
+import javax.swing.plaf.metal.MetalLookAndFeel;
 import org.junit.jupiter.api.Test;
 
 class MaskedDateFieldTest {
@@ -332,5 +340,306 @@ class MaskedDateFieldTest {
 
     assertEquals("2026-04-18", field.getText());
     assertEquals(LocalDate.of(2026, 4, 18), field.getDate());
+  }
+
+  @Test
+  void testQuotedLiteralIsFixedTextAndDateCanBeTyped() throws Exception {
+    MaskedDateField field = new MaskedDateField("dd.MM.yyyy 'г'.", Locale.forLanguageTag("bg-BG"));
+    assertEquals("__.__.____ г.", field.getMaskTemplate());
+
+    SwingUtilities.invokeAndWait(() -> field.setText("15012026"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("15.01.2026 г.", field.getText());
+    assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
+  }
+
+  @Test
+  void testEscapedQuoteInPattern() {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd''", Locale.UK);
+    assertEquals("____-__-__'", field.getMaskTemplate());
+
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    assertEquals("2026-01-15'", field.getText());
+    assertTrue(field.isDateValid());
+  }
+
+  @Test
+  void testUnsupportedPatternsAreRejected() {
+    for (String pattern :
+        new String[] {"dd MMM yyyy", "d/M/yyyy", "yyyy-MM", "yyyy[-MM-dd]", "yyyy-MM-dd 'x"}) {
+      assertThrows(
+          IllegalArgumentException.class, () -> new MaskedDateField(pattern, Locale.UK), pattern);
+    }
+  }
+
+  @Test
+  void testTypedDateOutsideRangeIsRejectedAndReverted() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDateRange(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31));
+    field.setDate(LocalDate.of(2020, 6, 1));
+    LocalDate[] received = {null};
+    field.addListener(date -> received[0] = date);
+
+    SwingUtilities.invokeAndWait(() -> field.setText("2021-06-01"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertFalse(field.isDateValid());
+    assertEquals(LocalDate.of(2020, 6, 1), field.getDate());
+    assertNull(received[0]);
+    assertEquals(
+        TextAttribute.STRIKETHROUGH_ON,
+        field.getFont().getAttributes().get(TextAttribute.STRIKETHROUGH));
+
+    Method revert = MaskedDateField.class.getDeclaredMethod("revertIfInvalid");
+    revert.setAccessible(true);
+    revert.invoke(field);
+
+    assertEquals("2020-06-01", field.getText());
+  }
+
+  @Test
+  void testReplacingSelectionBlanksTheSelectedDigits() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDate(LocalDate.of(2026, 6, 15));
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.selectAll();
+          field.replaceSelection("1");
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("1___-__-__", field.getText());
+    assertEquals(LocalDate.of(2026, 6, 15), field.getDate());
+  }
+
+  @Test
+  void testBackspaceClearsWholeSelection() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDate(LocalDate.of(2026, 6, 15));
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.select(5, 10);
+          KeyEvent backspace =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_PRESSED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_BACK_SPACE,
+                  KeyEvent.CHAR_UNDEFINED);
+          field.getKeyListeners()[0].keyPressed(backspace);
+          assertTrue(backspace.isConsumed());
+        });
+
+    assertEquals("2026-__-__", field.getText());
+    assertEquals(5, field.getCaretPosition());
+  }
+
+  @Test
+  void testSetTextEmptyClearsTheMask() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDate(LocalDate.of(2026, 6, 15));
+
+    SwingUtilities.invokeAndWait(() -> field.setText(""));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("____-__-__", field.getText());
+  }
+
+  @Test
+  void testCustomFontStyleIsKept() {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setFont(field.getFont().deriveFont(Font.BOLD));
+
+    field.setDate(LocalDate.of(2026, 1, 1));
+
+    assertTrue(field.getFont().isBold());
+  }
+
+  @Test
+  void testTwoDigitYearDefaultsToTwentyFirstCentury() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    assertEquals("15/01/26", field.getText());
+    assertTrue(field.isDateValid());
+  }
+
+  @Test
+  void testCustomForegroundIsKeptAcrossEdits() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setForeground(Color.BLUE);
+
+    field.setDate(LocalDate.of(2026, 1, 1));
+    assertEquals(Color.BLUE, field.getForeground());
+
+    SwingUtilities.invokeAndWait(() -> field.setText("2026-13-01"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertNotEquals(Color.BLUE, field.getForeground(), "invalid text is still marked");
+
+    field.setDate(LocalDate.of(2026, 2, 1));
+    assertEquals(Color.BLUE, field.getForeground());
+  }
+
+  @Test
+  void testLookAndFeelChangeWhileInvalidAppliesNewThemeColor() throws Exception {
+    LookAndFeel originalLaf = UIManager.getLookAndFeel();
+    // Metal only replaces UIResource values on update; some platform themes (e.g. Aqua) always do.
+    UIManager.setLookAndFeel(new MetalLookAndFeel());
+    Object originalForeground = UIManager.get("TextField.foreground");
+    try {
+      MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+      SwingUtilities.invokeAndWait(() -> field.setText("2026-13-01"));
+      SwingUtilities.invokeAndWait(() -> {});
+      assertEquals(Color.RED, field.getForeground());
+
+      ColorUIResource themeColor = new ColorUIResource(0, 128, 0);
+      UIManager.put("TextField.foreground", themeColor);
+      field.updateUI();
+      field.setDate(LocalDate.of(2026, 1, 1));
+
+      assertEquals(themeColor, field.getForeground());
+    } finally {
+      UIManager.put("TextField.foreground", originalForeground);
+      UIManager.setLookAndFeel(originalLaf);
+    }
+  }
+
+  @Test
+  void testLookAndFeelChangeWhileStruckThroughAppliesNewThemeFont() throws Exception {
+    LookAndFeel originalLaf = UIManager.getLookAndFeel();
+    UIManager.setLookAndFeel(new MetalLookAndFeel());
+    Object originalFont = UIManager.get("TextField.font");
+    try {
+      MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+      field.setVetoPolicy(date -> date.getDayOfWeek().getValue() != 7);
+      field.setDate(LocalDate.of(2026, 4, 19)); // a Sunday, shown struck through
+
+      FontUIResource themeFont = new FontUIResource("Serif", Font.BOLD, 30);
+      UIManager.put("TextField.font", themeFont);
+      field.updateUI();
+      field.setDate(LocalDate.of(2026, 4, 20));
+
+      assertEquals(themeFont, field.getFont());
+    } finally {
+      UIManager.put("TextField.font", originalFont);
+      UIManager.setLookAndFeel(originalLaf);
+    }
+  }
+
+  @Test
+  void testTwoDigitYearFieldRejectsDatesOutsideItsWindow() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    IllegalArgumentException error =
+        assertThrows(IllegalArgumentException.class, () -> field.setDate(LocalDate.of(1995, 5, 1)));
+
+    assertTrue(error.getMessage().contains("2000"), error.getMessage());
+    assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
+    assertEquals("15/01/26", field.getText());
+  }
+
+  @Test
+  void testSetDateRangeMovesTheTwoDigitYearWindow() throws Exception {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31));
+
+    field.setDate(LocalDate.of(1995, 5, 1));
+    assertEquals(LocalDate.of(1995, 5, 1), field.getDate());
+    assertEquals("01/05/95", field.getText());
+    assertTrue(field.isDateValid());
+
+    SwingUtilities.invokeAndWait(() -> field.setText("010698"));
+    SwingUtilities.invokeAndWait(() -> {});
+    assertEquals(LocalDate.of(1998, 6, 1), field.getDate());
+  }
+
+  @Test
+  void testSetDateRangeClearsDateOutsideTheNewWindow() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    field.setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31));
+
+    // "26" would now read as 1926, so the 2026 date cannot stay.
+    assertNull(field.getDate());
+    assertEquals(field.getMaskTemplate(), field.getText());
+  }
+
+  @Test
+  void testSetDateRangeValidatesTheRange() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> field.setDateRange(LocalDate.of(2021, 1, 1), LocalDate.of(2020, 1, 1)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> field.setDateRange(LocalDate.of(1850, 1, 1), LocalDate.of(2100, 1, 1)));
+  }
+
+  @Test
+  void testSetDateRangeClearsStruckThroughTextThatWouldReadAsAnotherDate() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setVetoPolicy(date -> date.getYear() != 2026);
+    field.setDate(LocalDate.of(2026, 1, 15)); // vetoed: shown struck through, no value
+    assertEquals("15/01/26", field.getText());
+    assertFalse(field.isDateValid());
+
+    field.setDateRange(LocalDate.of(1900, 1, 1), LocalDate.of(1999, 12, 31));
+
+    // "15/01/26" would now read as a valid 1926 date while getDate() is null.
+    assertEquals(field.getMaskTemplate(), field.getText());
+    assertNull(field.getDate());
+    assertFalse(field.isDateValid());
+  }
+
+  @Test
+  void testSetDateRangeKeepsTextThatStillMeansTheSameDate() {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    field.setDateRange(LocalDate.of(2000, 1, 1), LocalDate.of(2050, 12, 31));
+
+    assertEquals("15/01/26", field.getText());
+    assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
+  }
+
+  @Test
+  void testImpossibleDayOfMonthIsRejectedNotAdjusted() throws Exception {
+    for (String typed : new String[] {"2026-04-31", "2026-02-30", "2025-02-29"}) {
+      MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+      field.setDate(LocalDate.of(2026, 1, 1));
+      java.util.List<LocalDate> fired = new java.util.ArrayList<>();
+      field.addListener(fired::add);
+
+      SwingUtilities.invokeAndWait(() -> field.setText(typed));
+      SwingUtilities.invokeAndWait(() -> {});
+
+      assertFalse(field.isDateValid(), typed);
+      assertEquals(LocalDate.of(2026, 1, 1), field.getDate(), typed);
+      assertTrue(fired.isEmpty(), typed);
+      assertEquals(Color.RED, field.getForeground(), typed);
+
+      Method revert = MaskedDateField.class.getDeclaredMethod("revertIfInvalid");
+      revert.setAccessible(true);
+      revert.invoke(field);
+      assertEquals("2026-01-01", field.getText(), typed);
+    }
+  }
+
+  @Test
+  void testLeapDayIsAccepted() throws Exception {
+    MaskedDateField field = new MaskedDateField("dd/MM/yy", Locale.UK);
+
+    SwingUtilities.invokeAndWait(() -> field.setText("290228"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals(LocalDate.of(2028, 2, 29), field.getDate());
+    assertTrue(field.isDateValid());
   }
 }

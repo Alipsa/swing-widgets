@@ -18,4 +18,25 @@
     <Class name="se.alipsa.datepicker.CalendarPanel"/>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
   </Match>
+  <!-- Constructors reject invalid patterns/ranges with IllegalArgumentException, like the
+       classes above; these are not security-sensitive classes. -->
+  <Match>
+    <Class name="se.alipsa.datepicker.MaskedDateField"/>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+  </Match>
+  <!-- updateUI() is called by the JTextComponent constructor; it checks editablePositions == null
+       first and only touches the other fields once construction is complete. -->
+  <Match>
+    <Class name="se.alipsa.datepicker.MaskedDateField"/>
+    <Method name="updateUI"/>
+    <Bug pattern="UR_UNINIT_READ_CALLED_FROM_SUPER_CONSTRUCTOR"/>
+  </Match>
+  <Match>
+    <Class name="se.alipsa.symp.YearMonthPicker"/>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+  </Match>
+  <Match>
+    <Class name="se.alipsa.symp.YearMonthPickerCombo"/>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+  </Match>
 </FindBugsFilter>

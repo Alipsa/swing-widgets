@@ -12,6 +12,10 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.Window;
+import java.awt.event.ActionEvent;
+import java.awt.event.HierarchyBoundsAdapter;
+import java.awt.event.HierarchyEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
 import java.awt.image.BufferedImage;
@@ -26,14 +30,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
+import javax.swing.AbstractAction;
+import javax.swing.Action;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JWindow;
+import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
 /** A date picker component that combines a masked text field with a popup calendar. */
 public class DatePicker extends JPanel {
+
+  private static final System.Logger LOG = System.getLogger(DatePicker.class.getName());
 
   private Locale locale;
   private final LocalDate rangeFrom;
@@ -51,6 +60,22 @@ public class DatePicker extends JPanel {
   private JButton calendarButton;
   private JWindow popupWindow;
   private CalendarPanel calendarPanel;
+
+  static final String CLOSE_POPUP_ACTION = "closePopup";
+
+  /** Closes the popup on Escape; disabled while the popup is closed so Escape passes through. */
+  private final Action closePopupAction =
+      new AbstractAction() {
+        @Override
+        public boolean isEnabled() {
+          return isPopupOpen();
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+          closePopup();
+        }
+      };
 
   /** Creates a date picker initialized to today using the default locale and date pattern. */
   public DatePicker() {
@@ -85,9 +110,13 @@ public class DatePicker extends JPanel {
   /**
    * Creates a date picker with an explicit date range using the default locale.
    *
-   * @param from the earliest allowed date
-   * @param to the latest allowed date
-   * @param initial the initial date to show and select
+   * @param from the earliest allowed date, or {@code null} for 20 years before {@code initial} (or
+   *     today)
+   * @param to the latest allowed date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initial date to show and select, or {@code null} for an empty picker; a date
+   *     outside the range leaves the picker empty
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}
    */
   public DatePicker(LocalDate from, LocalDate to, LocalDate initial) {
     this(from, to, initial, Locale.getDefault());
@@ -96,10 +125,14 @@ public class DatePicker extends JPanel {
   /**
    * Creates a date picker with an explicit date range and locale.
    *
-   * @param from the earliest allowed date
-   * @param to the latest allowed date
-   * @param initial the initial date to show and select
+   * @param from the earliest allowed date, or {@code null} for 20 years before {@code initial} (or
+   *     today)
+   * @param to the latest allowed date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initial date to show and select, or {@code null} for an empty picker; a date
+   *     outside the range leaves the picker empty
    * @param locale the locale used for formatting and calendar labels
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}
    */
   public DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale) {
     this(from, to, initial, locale, null, true);
@@ -108,12 +141,17 @@ public class DatePicker extends JPanel {
   /**
    * Creates a date picker with full control over range, locale, and date pattern.
    *
-   * @param from the earliest allowed date
-   * @param to the latest allowed date
-   * @param initial the initial date to show and select
+   * @param from the earliest allowed date, or {@code null} for 20 years before {@code initial} (or
+   *     today)
+   * @param to the latest allowed date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initial date to show and select, or {@code null} for an empty picker; a date
+   *     outside the range leaves the picker empty
    * @param locale the locale used for formatting and calendar labels
    * @param datePattern the date pattern used in the text field
-   * @throws IllegalArgumentException if {@code from} is after {@code to}
+   * @throws IllegalArgumentException if the resulting {@code from} is after {@code to}, if the
+   *     pattern is not supported by {@link MaskedDateField}, or if a two-digit-year pattern is
+   *     combined with a range longer than 100 years
    */
   public DatePicker(
       LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern) {
@@ -127,27 +165,58 @@ public class DatePicker extends JPanel {
       Locale locale,
       String datePattern,
       boolean usesDerivedPattern) {
-    if (from != null && to != null && from.isAfter(to)) {
+    this.locale = locale != null ? locale : Locale.getDefault();
+    // Missing bounds are filled around the initial date, like CalendarPanel and the
+    // year-month pickers do, so an initial date never falls outside a bound the caller did not set.
+    LocalDate base = initial != null ? initial : LocalDate.now();
+    this.rangeFrom = from != null ? from : base.minusYears(20);
+    this.rangeTo = to != null ? to : base.plusYears(20);
+    if (rangeFrom.isAfter(rangeTo)) {
       throw new IllegalArgumentException("'from' date must be before 'to' date");
     }
-    this.locale = locale != null ? locale : Locale.getDefault();
-    this.rangeFrom = from != null ? from : LocalDate.now().minusYears(20);
-    this.rangeTo = to != null ? to : LocalDate.now().plusYears(20);
     this.datePattern = datePattern != null ? datePattern : derivePattern(this.locale);
     this.usesDerivedPattern = usesDerivedPattern;
-    this.lastValidDate = initial;
+    // Same rule as setDate(): an initial date outside the range leaves the picker empty.
+    this.lastValidDate = initial != null && isDateAllowed(initial) ? initial : null;
 
     super.setLocale(this.locale);
     setLayout(new GridBagLayout());
     createComponents();
     layoutComponents();
+    installPopupCloseTriggers();
 
-    if (initial != null) {
-      textField.setDate(initial);
+    if (lastValidDate != null) {
+      textField.setDate(lastValidDate);
     }
   }
 
-  private static String derivePattern(Locale locale) {
+  private void installPopupCloseTriggers() {
+    getInputMap(WHEN_IN_FOCUSED_WINDOW)
+        .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), CLOSE_POPUP_ACTION);
+    getActionMap().put(CLOSE_POPUP_ACTION, closePopupAction);
+    // Close the popup when the picker is hidden or removed, or when its window moves or
+    // resizes, so it is never left floating away from its anchor.
+    addHierarchyListener(
+        e -> {
+          if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && !isShowing()) {
+            closePopup();
+          }
+        });
+    addHierarchyBoundsListener(
+        new HierarchyBoundsAdapter() {
+          @Override
+          public void ancestorMoved(HierarchyEvent e) {
+            closePopup();
+          }
+
+          @Override
+          public void ancestorResized(HierarchyEvent e) {
+            closePopup();
+          }
+        });
+  }
+
+  static String derivePattern(Locale locale) {
     String pattern =
         DateTimeFormatterBuilder.getLocalizedDateTimePattern(
             FormatStyle.SHORT, null, IsoChronology.INSTANCE, locale);
@@ -187,6 +256,7 @@ public class DatePicker extends JPanel {
   private void rebuildTextField(LocalDate date, boolean enabled) {
     textField = new MaskedDateField(datePattern, locale);
     textField.addListener(this::onTextFieldDateChanged);
+    textField.setManagedDateRange(rangeFrom, rangeTo);
     textField.setVetoPolicy(vetoPolicy);
     if (date != null) {
       textField.setDate(date);
@@ -274,9 +344,10 @@ public class DatePicker extends JPanel {
 
   private void onCalendarDateSelected(LocalDate date) {
     if (date != null && isDateAllowed(date)) {
+      // Update the field first, so the picker is unchanged if it rejects the date.
+      textField.setDate(date);
       LocalDate previous = lastValidDate;
       lastValidDate = date;
-      textField.setDate(date);
       closePopup();
       if (previous == null || !previous.equals(date)) {
         fireListeners(date);
@@ -296,7 +367,7 @@ public class DatePicker extends JPanel {
       try {
         listener.accept(date);
       } catch (RuntimeException e) {
-        System.err.println("DatePicker listener threw exception: " + e.getMessage());
+        LOG.log(System.Logger.Level.WARNING, "DatePicker listener threw an exception", e);
       }
     }
   }
@@ -319,23 +390,23 @@ public class DatePicker extends JPanel {
     if (date != null && !isDateAllowed(date)) {
       return;
     }
+    // Update the field first, so the picker is unchanged if it rejects the date.
+    textField.setDate(date);
     LocalDate previous = lastValidDate;
     lastValidDate = date;
-    if (date != null) {
-      textField.setDate(date);
-    } else {
-      textField.setDate(null);
-    }
     if (previous == null ? date != null : !previous.equals(date)) {
       fireListeners(date);
     }
   }
 
-  /** Clears the current date and notifies listeners. */
+  /** Clears the current date and notifies listeners if a date was set. */
   public void clear() {
+    LocalDate previous = lastValidDate;
     lastValidDate = null;
     textField.setDate(null);
-    fireListeners(null);
+    if (previous != null) {
+      fireListeners(null);
+    }
   }
 
   /**
@@ -380,7 +451,16 @@ public class DatePicker extends JPanel {
     popupWindow = new JWindow(parentWindow);
     popupWindow.setFocusableWindowState(true);
     popupWindow.getContentPane().add(calendarPanel);
+    // Bound on the calendar (the popup's focus owner) rather than WHEN_IN_FOCUSED_WINDOW, which
+    // does not fire reliably for the undecorated popup window.
+    calendarPanel
+        .getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT)
+        .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), CLOSE_POPUP_ACTION);
+    calendarPanel.getActionMap().put(CLOSE_POPUP_ACTION, closePopupAction);
     popupWindow.pack();
+    // Remembered until the popup window is focused, so keyboard navigation starts in the
+    // calendar and focus loss reliably closes the popup.
+    calendarPanel.requestFocusInWindow();
 
     Point loc = textField.getLocationOnScreen();
     GraphicsConfiguration graphicsConfiguration = textField.getGraphicsConfiguration();
@@ -599,7 +679,11 @@ public class DatePicker extends JPanel {
    * Returns the masked text field used by the picker.
    *
    * <p>The returned instance is replaced when {@link #setLocale(Locale)} rebuilds the field, so
-   * callers must not cache it across locale changes.
+   * callers must not cache it across locale changes. Its date range is managed by the picker:
+   * {@link MaskedDateField#setDateRange} throws {@link IllegalStateException} on it. Change the
+   * date and veto policy through the picker ({@link #setDate}, {@link #setVetoPolicy}); calling
+   * {@code setDate} or {@code setVetoPolicy} on the field directly does not notify the picker, so
+   * {@link #getDate()} would no longer match the field.
    *
    * @return the current text field component
    */

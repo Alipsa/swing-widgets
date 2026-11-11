@@ -8,9 +8,14 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.event.ActionEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.font.TextAttribute;
+import java.text.ParseException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -21,7 +26,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -35,17 +42,20 @@ import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.border.LineBorder;
 
 /** A standalone month calendar component with optional veto and highlight policies. */
 public class CalendarPanel extends JPanel {
 
+  private static final System.Logger LOG = System.getLogger(CalendarPanel.class.getName());
+
+  // Fallbacks used when the look and feel does not define the corresponding UIManager color.
   private static final Color SELECTED_BG = new Color(163, 184, 204);
-  private static final Color SELECTED_BORDER = new Color(99, 130, 191);
   private static final Color OTHER_MONTH_FG = Color.LIGHT_GRAY;
   private static final Color VETOED_BG = new Color(240, 240, 240);
-  private static final Color HEADER_BG = new Color(240, 240, 240);
   private static final Color NORMAL_BG = Color.WHITE;
+  private static final Color NORMAL_FG = Color.BLACK;
   private static final int CELL_SIZE = 36;
   private static final int ROWS = 6;
   private static final int COLS = 7;
@@ -58,7 +68,9 @@ public class CalendarPanel extends JPanel {
   private final DayOfWeek firstDayOfWeek;
 
   private LocalDate selectedDate;
+  private LocalDate keyboardDate;
   private YearMonth displayedYearMonth;
+  private Font cellFont;
   private DateVetoPolicy vetoPolicy;
   private DateHighlightPolicy highlightPolicy;
   private final List<Consumer<LocalDate>> listeners = new ArrayList<>();
@@ -91,33 +103,132 @@ public class CalendarPanel extends JPanel {
    * @param locale the locale used for month and weekday names
    */
   public CalendarPanel(LocalDate initial, Locale locale) {
-    this(initial.minusYears(20), initial.plusYears(20), initial, locale);
+    this(null, null, initial, locale);
   }
 
   /**
    * Creates a calendar panel with an explicit date range.
    *
-   * @param from the earliest selectable date
-   * @param to the latest selectable date
-   * @param initial the initially selected date
-   * @param locale the locale used for month and weekday names
+   * @param from the earliest selectable date, or {@code null} for 20 years before {@code initial}
+   *     (or today)
+   * @param to the latest selectable date, or {@code null} for 20 years after {@code initial} (or
+   *     today)
+   * @param initial the initially selected date, or {@code null} for no selection; a date outside
+   *     the range is not selected and the closest month in range is displayed instead
+   * @param locale the locale used for month and weekday names, or {@code null} for the default
+   *     locale
    * @throws IllegalArgumentException if {@code from} is after {@code to}
    */
   public CalendarPanel(LocalDate from, LocalDate to, LocalDate initial, Locale locale) {
-    if (from != null && to != null && from.isAfter(to)) {
+    LocalDate base = initial != null ? initial : LocalDate.now();
+    this.rangeFrom = from != null ? from : base.minusYears(20);
+    this.rangeTo = to != null ? to : base.plusYears(20);
+    if (rangeFrom.isAfter(rangeTo)) {
       throw new IllegalArgumentException("'from' date must be before 'to' date");
     }
-    this.locale = locale;
-    this.rangeFrom = from;
-    this.rangeTo = to;
-    this.selectedDate = initial;
-    this.displayedYearMonth = YearMonth.from(initial);
-    this.firstDayOfWeek = WeekFields.of(locale).getFirstDayOfWeek();
+    this.locale = locale != null ? locale : Locale.getDefault();
+    this.selectedDate = initial != null && isInRange(initial) ? initial : null;
+    this.displayedYearMonth = clampToRange(YearMonth.from(base));
+    this.firstDayOfWeek = WeekFields.of(this.locale).getFirstDayOfWeek();
 
     setLayout(new GridBagLayout());
-    setBackground(HEADER_BG);
+    setFocusable(true);
     buildUI();
+    installKeyBindings();
+    addFocusListener(
+        new FocusAdapter() {
+          @Override
+          public void focusGained(FocusEvent e) {
+            drawCalendar();
+          }
+
+          @Override
+          public void focusLost(FocusEvent e) {
+            drawCalendar();
+          }
+        });
     drawCalendar();
+  }
+
+  private boolean isInRange(LocalDate date) {
+    return !date.isBefore(rangeFrom) && !date.isAfter(rangeTo);
+  }
+
+  private YearMonth clampToRange(YearMonth yearMonth) {
+    YearMonth fromYm = YearMonth.from(rangeFrom);
+    YearMonth toYm = YearMonth.from(rangeTo);
+    if (yearMonth.isBefore(fromYm)) {
+      return fromYm;
+    }
+    return yearMonth.isAfter(toYm) ? toYm : yearMonth;
+  }
+
+  private LocalDate clampToRange(LocalDate date) {
+    if (date.isBefore(rangeFrom)) {
+      return rangeFrom;
+    }
+    return date.isAfter(rangeTo) ? rangeTo : date;
+  }
+
+  private static Color uiColor(String key, Color fallback) {
+    Color color = UIManager.getColor(key);
+    return color != null ? color : fallback;
+  }
+
+  private void installKeyBindings() {
+    bindKey(KeyEvent.VK_LEFT, "previousDay", () -> moveKeyboardDate(keyboardDate.minusDays(1)));
+    bindKey(KeyEvent.VK_RIGHT, "nextDay", () -> moveKeyboardDate(keyboardDate.plusDays(1)));
+    bindKey(KeyEvent.VK_UP, "previousWeek", () -> moveKeyboardDate(keyboardDate.minusWeeks(1)));
+    bindKey(KeyEvent.VK_DOWN, "nextWeek", () -> moveKeyboardDate(keyboardDate.plusWeeks(1)));
+    bindKey(
+        KeyEvent.VK_PAGE_UP, "previousMonth", () -> moveKeyboardDate(keyboardDate.minusMonths(1)));
+    bindKey(KeyEvent.VK_PAGE_DOWN, "nextMonth", () -> moveKeyboardDate(keyboardDate.plusMonths(1)));
+    bindKey(
+        KeyEvent.VK_HOME,
+        "firstDayOfMonth",
+        () -> moveKeyboardDate(keyboardDate.withDayOfMonth(1)));
+    bindKey(
+        KeyEvent.VK_END,
+        "lastDayOfMonth",
+        () -> moveKeyboardDate(keyboardDate.withDayOfMonth(keyboardDate.lengthOfMonth())));
+    bindKey(KeyEvent.VK_ENTER, "selectKeyboardDate", () -> selectDate(keyboardDate));
+    bindKey(KeyEvent.VK_SPACE, "selectKeyboardDate", () -> selectDate(keyboardDate));
+  }
+
+  private void bindKey(int keyCode, String name, Runnable action) {
+    getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(keyCode, 0), name);
+    getActionMap()
+        .put(
+            name,
+            new AbstractAction() {
+              @Override
+              public void actionPerformed(ActionEvent e) {
+                action.run();
+              }
+            });
+  }
+
+  private void moveKeyboardDate(LocalDate target) {
+    keyboardDate = clampToRange(target);
+    displayedYearMonth = YearMonth.from(keyboardDate);
+    drawCalendar();
+  }
+
+  /**
+   * Keeps the keyboard cursor inside the displayed month, preferring the selected date and
+   * otherwise the same day of month as before.
+   */
+  private void syncKeyboardDate() {
+    if (keyboardDate != null && YearMonth.from(keyboardDate).equals(displayedYearMonth)) {
+      return;
+    }
+    if (selectedDate != null && YearMonth.from(selectedDate).equals(displayedYearMonth)) {
+      keyboardDate = selectedDate;
+      return;
+    }
+    int day = keyboardDate != null ? keyboardDate.getDayOfMonth() : 1;
+    keyboardDate =
+        clampToRange(displayedYearMonth.atDay(Math.min(day, displayedYearMonth.lengthOfMonth())));
   }
 
   private void buildUI() {
@@ -131,6 +242,8 @@ public class CalendarPanel extends JPanel {
     gbc.gridx = 0;
     prevMonthBtn = new JButton("\u25C0");
     prevMonthBtn.setMargin(new Insets(1, 3, 1, 3));
+    // Keyboard users navigate months with Page Up/Page Down on the panel itself.
+    prevMonthBtn.setFocusable(false);
     prevMonthBtn.addActionListener(e -> previousMonth());
     add(prevMonthBtn, gbc);
 
@@ -168,6 +281,7 @@ public class CalendarPanel extends JPanel {
     gbc.gridwidth = 1;
     nextMonthBtn = new JButton("\u25B6");
     nextMonthBtn.setMargin(new Insets(1, 3, 1, 3));
+    nextMonthBtn.setFocusable(false);
     nextMonthBtn.addActionListener(e -> nextMonth());
     add(nextMonthBtn, gbc);
 
@@ -181,8 +295,6 @@ public class CalendarPanel extends JPanel {
       JLabel header = new JLabel(name, SwingConstants.CENTER);
       header.setFont(
           header.getFont().deriveFont(Font.BOLD, header.getFont().getSize2D() + HEADER_FONT_DELTA));
-      header.setOpaque(true);
-      header.setBackground(HEADER_BG);
       add(header, gbc);
     }
 
@@ -192,9 +304,12 @@ public class CalendarPanel extends JPanel {
         gbc.gridx = col;
         JLabel cell = new JLabel("", SwingConstants.CENTER);
         cell.setOpaque(true);
-        cell.setBackground(NORMAL_BG);
         cell.setPreferredSize(new Dimension(CELL_SIZE, CELL_SIZE));
-        cell.setFont(cell.getFont().deriveFont(cell.getFont().getSize2D() + CELL_FONT_DELTA));
+        if (cellFont == null) {
+          Font labelFont = cell.getFont();
+          cellFont = labelFont.deriveFont(Font.PLAIN, labelFont.getSize2D() + CELL_FONT_DELTA);
+        }
+        cell.setFont(cellFont);
         cell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         final int r = row;
         final int c = col;
@@ -202,6 +317,7 @@ public class CalendarPanel extends JPanel {
             new MouseAdapter() {
               @Override
               public void mouseClicked(MouseEvent e) {
+                requestFocusInWindow();
                 onCellClicked(r, c);
               }
             });
@@ -222,6 +338,18 @@ public class CalendarPanel extends JPanel {
 
     LocalDate cellDate = firstOfMonth.minusDays(offset);
 
+    syncKeyboardDate();
+    Color normalBg = uiColor("List.background", NORMAL_BG);
+    Color normalFg = uiColor("List.foreground", NORMAL_FG);
+    Color selectedBg = uiColor("List.selectionBackground", SELECTED_BG);
+    Color selectedFg = uiColor("List.selectionForeground", NORMAL_FG);
+    Color otherMonthFg = uiColor("Label.disabledForeground", OTHER_MONTH_FG);
+    Color vetoedBg = uiColor("Panel.background", VETOED_BG);
+    Map<TextAttribute, Object> strikeAttrs = new HashMap<>(cellFont.getAttributes());
+    strikeAttrs.put(TextAttribute.STRIKETHROUGH, TextAttribute.STRIKETHROUGH_ON);
+    Font vetoedFont = cellFont.deriveFont(strikeAttrs);
+    boolean showKeyboardCursor = isFocusOwner();
+
     for (int row = 0; row < ROWS; row++) {
       for (int col = 0; col < COLS; col++) {
         dateCellValues[row][col] = cellDate;
@@ -229,6 +357,7 @@ public class CalendarPanel extends JPanel {
         cell.setText(String.valueOf(cellDate.getDayOfMonth()));
         cell.setBorder(null);
         cell.setToolTipText(null);
+        cell.setFont(cellFont);
 
         boolean isCurrentMonth = YearMonth.from(cellDate).equals(displayedYearMonth);
         boolean isSelected = cellDate.equals(selectedDate);
@@ -237,29 +366,27 @@ public class CalendarPanel extends JPanel {
             highlightPolicy != null ? highlightPolicy.getHighlightInfo(cellDate) : null;
 
         if (isSelected) {
-          cell.setBackground(SELECTED_BG);
-          cell.setForeground(Color.BLACK);
-          cell.setBorder(new LineBorder(SELECTED_BORDER, 1));
-          cell.setFont(cell.getFont().deriveFont(Font.PLAIN));
+          cell.setBackground(selectedBg);
+          cell.setForeground(selectedFg);
+          cell.setBorder(new LineBorder(selectedBg.darker(), 1));
         } else if (isVetoed) {
-          cell.setBackground(VETOED_BG);
-          cell.setForeground(isCurrentMonth ? Color.BLACK : OTHER_MONTH_FG);
-          Font base = cell.getFont().deriveFont(Font.PLAIN);
-          Map<TextAttribute, Object> attrs = new HashMap<>(base.getAttributes());
-          attrs.put(TextAttribute.STRIKETHROUGH, TextAttribute.STRIKETHROUGH_ON);
-          cell.setFont(base.deriveFont(attrs));
+          cell.setBackground(vetoedBg);
+          cell.setForeground(isCurrentMonth ? normalFg : otherMonthFg);
+          cell.setFont(vetoedFont);
         } else if (!isCurrentMonth) {
-          cell.setBackground(NORMAL_BG);
-          cell.setForeground(OTHER_MONTH_FG);
-          cell.setFont(cell.getFont().deriveFont(Font.PLAIN));
+          cell.setBackground(normalBg);
+          cell.setForeground(otherMonthFg);
         } else {
-          cell.setBackground(NORMAL_BG);
-          cell.setForeground(Color.BLACK);
-          cell.setFont(cell.getFont().deriveFont(Font.PLAIN));
+          cell.setBackground(normalBg);
+          cell.setForeground(normalFg);
 
           if (highlightInfo != null && highlightInfo.getBackgroundColor() != null) {
             cell.setBackground(highlightInfo.getBackgroundColor());
           }
+        }
+
+        if (showKeyboardCursor && cellDate.equals(keyboardDate)) {
+          cell.setBorder(BorderFactory.createDashedBorder(normalFg, 2f, 2f));
         }
 
         if (highlightInfo != null && highlightInfo.getTooltip() != null) {
@@ -288,11 +415,16 @@ public class CalendarPanel extends JPanel {
   }
 
   private void onCellClicked(int row, int col) {
-    LocalDate date = dateCellValues[row][col];
-    if (!isDateAllowed(date)) {
+    selectDate(dateCellValues[row][col]);
+  }
+
+  /** Selects a date chosen by the user; listeners are notified even if it is already selected. */
+  private void selectDate(LocalDate date) {
+    if (date == null || !isDateAllowed(date)) {
       return;
     }
     selectedDate = date;
+    keyboardDate = date;
     displayedYearMonth = YearMonth.from(date);
     drawCalendar();
     fireListeners(date);
@@ -322,10 +454,10 @@ public class CalendarPanel extends JPanel {
 
   private void showYearPopup() {
     JPopupMenu popup = new JPopupMenu();
-    JSpinner spinner =
-        new JSpinner(
-            new SpinnerNumberModel(
-                displayedYearMonth.getYear(), rangeFrom.getYear(), rangeTo.getYear(), 1));
+    int minYear = rangeFrom.getYear();
+    int maxYear = rangeTo.getYear();
+    int year = Math.max(minYear, Math.min(maxYear, displayedYearMonth.getYear()));
+    JSpinner spinner = new JSpinner(new SpinnerNumberModel(year, minYear, maxYear, 1));
     JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner, "####");
     spinner.setEditor(editor);
     Font bigFont = yearLabel.getFont().deriveFont(Font.PLAIN, yearLabel.getFont().getSize2D() + 6f);
@@ -371,7 +503,7 @@ public class CalendarPanel extends JPanel {
             new javax.swing.AbstractAction() {
               @Override
               public void actionPerformed(java.awt.event.ActionEvent e) {
-                updateDisplayedYear((Integer) spinner.getValue());
+                updateDisplayedYear(committedYear(spinner));
                 popup.setVisible(false);
               }
             });
@@ -408,7 +540,7 @@ public class CalendarPanel extends JPanel {
               @Override
               public void keyPressed(java.awt.event.KeyEvent e) {
                 if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER) {
-                  updateDisplayedYear((Integer) spinner.getValue());
+                  updateDisplayedYear(committedYear(spinner));
                 }
               }
             });
@@ -430,12 +562,22 @@ public class CalendarPanel extends JPanel {
     drawCalendar();
   }
 
+  /** Commits a typed but not yet committed spinner value before reading it. */
+  private static int committedYear(JSpinner spinner) {
+    try {
+      spinner.commitEdit();
+    } catch (ParseException e) {
+      // Invalid or out-of-range text: keep the last valid value.
+    }
+    return (Integer) spinner.getValue();
+  }
+
   private void fireListeners(LocalDate date) {
     for (Consumer<LocalDate> listener : new ArrayList<>(listeners)) {
       try {
         listener.accept(date);
       } catch (RuntimeException e) {
-        System.err.println("CalendarPanel listener threw exception: " + e.getMessage());
+        LOG.log(System.Logger.Level.WARNING, "CalendarPanel listener threw an exception", e);
       }
     }
   }
@@ -443,25 +585,32 @@ public class CalendarPanel extends JPanel {
   /**
    * Returns the currently selected date.
    *
-   * @return the selected date
+   * @return the selected date, or {@code null} if no date is selected
    */
   public LocalDate getSelectedDate() {
     return selectedDate;
   }
 
   /**
-   * Selects the supplied date if it is within range and not vetoed.
+   * Selects the supplied date if it is within range and not vetoed. Listeners are notified only
+   * when the selection actually changes.
    *
-   * @param date the date to select
+   * @param date the date to select, or {@code null} to clear the selection
    */
   public void setSelectedDate(LocalDate date) {
-    if (!isDateAllowed(date)) {
+    if (date != null && !isDateAllowed(date)) {
       return;
     }
+    LocalDate previous = selectedDate;
     this.selectedDate = date;
-    this.displayedYearMonth = YearMonth.from(date);
+    if (date != null) {
+      this.keyboardDate = date;
+      this.displayedYearMonth = YearMonth.from(date);
+    }
     drawCalendar();
-    fireListeners(date);
+    if (!Objects.equals(previous, date)) {
+      fireListeners(date);
+    }
   }
 
   /**

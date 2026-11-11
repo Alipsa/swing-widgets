@@ -6,6 +6,19 @@ Useful Swing components for java 11 or higher (tested with jdk 11, 17, 21, and 2
 
 <img src="examples/AllControlsDemoScreenshot.png" alt="">
 
+## Run the demo with local code
+
+With Java 11 or higher, Maven, and Groovy on your `PATH`, run:
+
+```bash
+./run-demo.sh
+```
+
+The launcher compiles the current checkout (including uncommitted changes) and runs
+`examples/AllControlsDemo.groovy` using `target/classes`. It disables the demo's
+`@Grab` dependency so the widgets come from your local code. You can also invoke
+the launcher by its path from another directory.
+
 ## YearMonth Picker
 A year-month date picker component for java swing.
 
@@ -14,8 +27,8 @@ There are two versions:
 2. YearMonthPicker - A custom control that resembles DatePicker where the user can click a calendar and then pick the
    desired year month.
 
-Both works similar to a combo box i.e. you do getValue() to get the value and
-setOnAction() to capture a value change e.g.
+Both work similar to a combo box i.e. you do getValue() to get the value and
+addListener() to capture a value change e.g.
 ```java
 import se.alipsa.symp.YearMonthPicker;
 
@@ -41,7 +54,7 @@ the release section or add the following to your maven file:
 <dependency>
   <groupId>se.alipsa</groupId>
   <artifactId>swing-widgets</artifactId>
-  <version>1.1.2</version>
+  <version>1.1.3</version>
 </dependency>
 ```
 ...or the equivalent to you favorite build tool.
@@ -70,8 +83,12 @@ This gives you all yearmonths between from and to (both from and to included) wi
 initial value as the default selected, displayed in the locale specified in the format specified.
 
 ## se.alipsa.symp.YearMonthPicker
-<img src="https://raw.githubusercontent.com/Alipsa/swing-widgets/master/docs/YearMonthPicker.png" alt="YearMonthPickerCombo Screenshot" width="350" />
-There are 5 constructors:
+<img src="https://raw.githubusercontent.com/Alipsa/swing-widgets/master/docs/YearMonthPicker.png" alt="YearMonthPicker Screenshot" width="350" />
+Listeners registered with `addListener()` are notified when the user picks a different month in the popup.
+`setSelectedItem()` updates the value and the displayed text without notifying listeners. The popup closes
+on Escape, on a click outside it, or when the window moves.
+
+There are 7 constructors:
 
 __YearMonthPicker()__ This gives you YearMonths 3 year back and 3 years into the future from now in
 the system default locale.
@@ -158,6 +175,15 @@ Custom date range and locale with locale-derived date pattern.
 
 __DatePicker(LocalDate from, LocalDate to, LocalDate initial, Locale locale, String datePattern)__
 Full control over range, locale, and date pattern (e.g. "yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy").
+
+Dates outside the range, or rejected by the veto policy, cannot be selected or typed; an initial date outside
+the range leaves the picker empty. A missing `from` or `to` defaults to 20 years before or after the initial date
+(or today). The date pattern may only contain numeric fields (`yy`/`yyyy`, `MM`, `dd`), separators and quoted
+literals. Two-digit years are read in the 100-year window that covers the picker's range, so a two-digit-year
+pattern cannot be combined with a range longer than 100 years.
+
+In the popup calendar the arrow keys move between days and weeks, Page Up/Page Down change month,
+Home/End jump to the start/end of the month, Enter or Space selects, and Escape closes the popup.
 
 ### Veto and Highlight Policies
 

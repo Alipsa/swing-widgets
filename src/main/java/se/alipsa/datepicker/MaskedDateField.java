@@ -9,13 +9,16 @@ import java.awt.event.KeyEvent;
 import java.awt.font.TextAttribute;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.text.AttributeSet;
@@ -26,36 +29,61 @@ import javax.swing.text.PlainDocument;
 /** A text field that enforces a date mask and parses valid input into {@link LocalDate} values. */
 public class MaskedDateField extends JTextField {
 
+  private static final System.Logger LOG = System.getLogger(MaskedDateField.class.getName());
+  // Red is used on every look and feel to flag text that is not a date.
   private static final Color INVALID_COLOR = Color.RED;
-  private static final Color NORMAL_COLOR = Color.BLACK;
+
+  /** Two-digit years are read as 2000-2099 unless a date range says otherwise. */
+  private static final LocalDate DEFAULT_TWO_DIGIT_YEAR_BASE = LocalDate.of(2000, 1, 1);
 
   private final String datePattern;
   private final Locale locale;
-  private final DateTimeFormatter formatter;
+  private DateTimeFormatter formatter;
   private final String maskTemplate;
   private final boolean[] editablePositions;
   private Font baseFont;
+  private Color baseForeground;
+
+  /** First day of the 100-year window for two-digit years, or {@code null} if none are used. */
+  private LocalDate twoDigitYearStart;
+
+  // No initializer: updateUI() runs during the superclass constructor.
+  private boolean updatingUI;
+  private boolean rangeManagedByPicker;
 
   private LocalDate lastValidDate;
   private DateVetoPolicy vetoPolicy;
+  private LocalDate rangeFrom;
+  private LocalDate rangeTo;
   private final List<Consumer<LocalDate>> listeners = new ArrayList<>();
   private boolean internalUpdate = false;
 
   /**
    * Creates a masked date field for the supplied pattern and locale.
    *
+   * <p>The pattern may only contain numeric year ({@code yy}, {@code yyyy}, {@code uu}, {@code
+   * uuuu}), month ({@code MM}) and day ({@code dd}) fields, separators, and quoted literals such as
+   * {@code 'г'}. Two-digit years are read as 2000&ndash;2099 unless {@link #setDateRange} moves
+   * that window (a {@link DatePicker} does this for its range). {@link #setDate} rejects dates
+   * outside the window, since their text would read as a different date.
+   *
    * @param datePattern the date format pattern used for display and parsing
    * @param locale the locale used for parsing and formatting
+   * @throws IllegalArgumentException if the pattern contains fields that cannot be entered as
+   *     fixed-width digits
    */
   public MaskedDateField(String datePattern, Locale locale) {
     this.datePattern = datePattern;
     this.locale = locale;
-    this.formatter = DateTimeFormatter.ofPattern(datePattern, locale);
-    this.maskTemplate = buildMaskTemplate(datePattern);
-    this.editablePositions = buildEditablePositions(datePattern);
-    this.baseFont = getFont().deriveFont(Font.PLAIN);
+    DateTimeFormatter.ofPattern(datePattern, locale); // validates the pattern syntax
+    StringBuilder mask = new StringBuilder();
+    this.editablePositions = buildMask(datePattern, mask);
+    this.maskTemplate = mask.toString();
+    this.formatter = buildFormatter(datePattern, locale, DEFAULT_TWO_DIGIT_YEAR_BASE);
+    this.twoDigitYearStart = hasTwoDigitYear(datePattern) ? DEFAULT_TWO_DIGIT_YEAR_BASE : null;
+    this.baseFont = getFont();
 
-    setColumns(datePattern.length());
+    setColumns(maskTemplate.length());
     setText(maskTemplate);
 
     PlainDocument doc = (PlainDocument) getDocument();
@@ -71,24 +99,168 @@ public class MaskedDateField extends JTextField {
         });
   }
 
-  private static String buildMaskTemplate(String pattern) {
-    StringBuilder sb = new StringBuilder();
-    for (char c : pattern.toCharArray()) {
-      if (Character.isLetter(c)) {
-        sb.append('_');
+  /**
+   * Builds the mask template into {@code mask} and returns which mask positions accept digits.
+   * Quoted literals (with {@code ''} as an escaped quote) become fixed text, so the mask lines up
+   * character by character with the formatter output.
+   */
+  private static boolean[] buildMask(String pattern, StringBuilder mask) {
+    List<Boolean> editable = new ArrayList<>();
+    boolean hasYear = false;
+    boolean hasMonth = false;
+    boolean hasDay = false;
+    int i = 0;
+    while (i < pattern.length()) {
+      char c = pattern.charAt(i);
+      if (c == '\'') {
+        if (i + 1 < pattern.length() && pattern.charAt(i + 1) == '\'') {
+          mask.append('\'');
+          editable.add(false);
+          i += 2;
+          continue;
+        }
+        int end = i + 1;
+        while (true) {
+          if (end >= pattern.length()) {
+            throw new IllegalArgumentException("Unterminated quote in date pattern: " + pattern);
+          }
+          char literal = pattern.charAt(end);
+          if (literal == '\'') {
+            if (end + 1 < pattern.length() && pattern.charAt(end + 1) == '\'') {
+              mask.append('\'');
+              editable.add(false);
+              end += 2;
+              continue;
+            }
+            break;
+          }
+          mask.append(literal);
+          editable.add(false);
+          end++;
+        }
+        i = end + 1;
+      } else if (Character.isLetter(c)) {
+        int end = i;
+        while (end < pattern.length() && pattern.charAt(end) == c) {
+          end++;
+        }
+        int count = end - i;
+        if (!isSupportedField(c, count)) {
+          throw new IllegalArgumentException(
+              "Unsupported field '"
+                  + pattern.substring(i, end)
+                  + "' in date pattern '"
+                  + pattern
+                  + "'; only yy, yyyy, uu, uuuu, MM and dd are supported");
+        }
+        hasYear |= c == 'y' || c == 'u';
+        hasMonth |= c == 'M';
+        hasDay |= c == 'd';
+        for (int k = 0; k < count; k++) {
+          mask.append('_');
+          editable.add(true);
+        }
+        i = end;
+      } else if (c == '[' || c == ']') {
+        throw new IllegalArgumentException(
+            "Optional sections are not supported in date pattern: " + pattern);
       } else {
-        sb.append(c);
+        mask.append(c);
+        editable.add(false);
+        i++;
       }
     }
-    return sb.toString();
-  }
-
-  private static boolean[] buildEditablePositions(String pattern) {
-    boolean[] positions = new boolean[pattern.length()];
-    for (int i = 0; i < pattern.length(); i++) {
-      positions[i] = Character.isLetter(pattern.charAt(i));
+    if (!hasYear || !hasMonth || !hasDay) {
+      throw new IllegalArgumentException(
+          "Date pattern must contain year, month and day fields: " + pattern);
+    }
+    boolean[] positions = new boolean[editable.size()];
+    for (int k = 0; k < positions.length; k++) {
+      positions[k] = editable.get(k);
     }
     return positions;
+  }
+
+  /**
+   * Builds the formatter for {@code pattern}, equivalent to {@link
+   * DateTimeFormatter#ofPattern(String, Locale)} except that two-digit years ({@code yy}, {@code
+   * uu}) are read in the 100-year window starting at {@code twoDigitYearBase}.
+   */
+  private static DateTimeFormatter buildFormatter(
+      String pattern, Locale locale, LocalDate twoDigitYearBase) {
+    DateTimeFormatterBuilder builder = new DateTimeFormatterBuilder();
+    StringBuilder chunk = new StringBuilder();
+    int i = 0;
+    while (i < pattern.length()) {
+      char c = pattern.charAt(i);
+      if (c == '\'') {
+        int end = i + 1;
+        while (end < pattern.length()) {
+          if (pattern.charAt(end) == '\'') {
+            if (end + 1 < pattern.length() && pattern.charAt(end + 1) == '\'') {
+              end += 2;
+              continue;
+            }
+            break;
+          }
+          end++;
+        }
+        chunk.append(pattern, i, Math.min(end + 1, pattern.length()));
+        i = end + 1;
+      } else if (c == 'y' || c == 'u') {
+        int end = i;
+        while (end < pattern.length() && pattern.charAt(end) == c) {
+          end++;
+        }
+        if (end - i == 2) {
+          if (chunk.length() > 0) {
+            builder.appendPattern(chunk.toString());
+            chunk.setLength(0);
+          }
+          builder.appendValueReduced(
+              c == 'y' ? ChronoField.YEAR_OF_ERA : ChronoField.YEAR, 2, 2, twoDigitYearBase);
+        } else {
+          chunk.append(pattern, i, end);
+        }
+        i = end;
+      } else {
+        chunk.append(c);
+        i++;
+      }
+    }
+    if (chunk.length() > 0) {
+      builder.appendPattern(chunk.toString());
+    }
+    return builder.toFormatter(locale);
+  }
+
+  private static final Pattern TWO_DIGIT_YEAR = Pattern.compile("(?<!y)yy(?!y)|(?<!u)uu(?!u)");
+
+  private static boolean hasTwoDigitYear(String pattern) {
+    return TWO_DIGIT_YEAR.matcher(pattern.replaceAll("'[^']*'", "")).find();
+  }
+
+  /** Start of the 100-year window for two-digit years that best covers the given range. */
+  private static LocalDate twoDigitYearBase(LocalDate from, LocalDate to) {
+    if (from == null && to == null) {
+      return DEFAULT_TWO_DIGIT_YEAR_BASE;
+    }
+    int fromYear = from != null ? from.getYear() : Integer.MIN_VALUE;
+    int latestStart = to != null ? to.getYear() - 99 : Integer.MIN_VALUE;
+    return LocalDate.of(Math.max(fromYear, latestStart), 1, 1);
+  }
+
+  private static boolean isSupportedField(char letter, int count) {
+    switch (letter) {
+      case 'y':
+      case 'u':
+        return count == 2 || count == 4;
+      case 'M':
+      case 'd':
+        return count == 2;
+      default:
+        return false;
+    }
   }
 
   /**
@@ -104,8 +276,22 @@ public class MaskedDateField extends JTextField {
    * Sets the field to the supplied date.
    *
    * @param date the date to display, or {@code null} to clear the field
+   * @throws IllegalArgumentException if the pattern has a two-digit year and {@code date} is
+   *     outside its 100-year window (see {@link #setDateRange})
    */
   public void setDate(LocalDate date) {
+    if (date != null && !isInTwoDigitYearWindow(date)) {
+      // The text would show a different date (e.g. 1995 as "95", which reads as 2095).
+      throw new IllegalArgumentException(
+          date
+              + " cannot be shown with the two-digit year pattern '"
+              + datePattern
+              + "', which covers the years "
+              + twoDigitYearStart.getYear()
+              + "-"
+              + (twoDigitYearStart.getYear() + 99)
+              + "; use setDateRange(...) to move that window or a four-digit year pattern");
+    }
     internalUpdate = true;
     try {
       if (date == null) {
@@ -163,6 +349,84 @@ public class MaskedDateField extends JTextField {
   }
 
   /**
+   * Restricts accepted dates to the inclusive range; {@code null} leaves that side open. Dates
+   * outside the range are shown struck through and are not accepted, like vetoed dates.
+   *
+   * <p>For a pattern with a two-digit year this also sets the 100-year window the year is read in:
+   * it starts at {@code from} (or 99 years before {@code to} if that is later). If the current date
+   * falls outside the new window, or the text would read as a different date in it, the field is
+   * reset.
+   *
+   * <p>The range of a field owned by a {@link DatePicker} is managed by the picker and cannot be
+   * changed here.
+   *
+   * @param from the earliest accepted date, or {@code null} for no lower bound
+   * @param to the latest accepted date, or {@code null} for no upper bound
+   * @throws IllegalArgumentException if {@code from} is after {@code to}, or if the pattern has a
+   *     two-digit year and the range spans more than 100 years
+   * @throws IllegalStateException if this field belongs to a {@link DatePicker}
+   */
+  public void setDateRange(LocalDate from, LocalDate to) {
+    if (rangeManagedByPicker) {
+      throw new IllegalStateException(
+          "The range of a DatePicker's text field is managed by the picker; create the DatePicker"
+              + " with the range instead");
+    }
+    applyDateRange(from, to);
+  }
+
+  /** Sets the range on behalf of a {@link DatePicker}, which then owns it. */
+  void setManagedDateRange(LocalDate from, LocalDate to) {
+    rangeManagedByPicker = true;
+    applyDateRange(from, to);
+  }
+
+  private void applyDateRange(LocalDate from, LocalDate to) {
+    if (from != null && to != null && from.isAfter(to)) {
+      throw new IllegalArgumentException("'from' date must be before 'to' date");
+    }
+    LocalDate base = twoDigitYearBase(from, to);
+    if (twoDigitYearStart != null
+        && from != null
+        && to != null
+        && to.getYear() - from.getYear() > 99) {
+      throw new IllegalArgumentException(
+          "Date pattern '"
+              + datePattern
+              + "' has a two-digit year, which cannot represent the range "
+              + from
+              + " to "
+              + to
+              + " (more than 100 years); use a four-digit year pattern");
+    }
+    LocalDate shownBefore = parseText();
+    this.rangeFrom = from;
+    this.rangeTo = to;
+    this.formatter = buildFormatter(datePattern, locale, base);
+    if (twoDigitYearStart != null) {
+      this.twoDigitYearStart = base;
+      if (lastValidDate != null && !isInTwoDigitYearWindow(lastValidDate)) {
+        // Its two-digit text would now read as a date in the new window.
+        setDate(null);
+        return;
+      }
+      if (shownBefore != null && !shownBefore.equals(parseText())) {
+        // The text (e.g. a struck-through vetoed date) now reads as a different date; show the
+        // actual value instead so text and value cannot disagree.
+        setDate(lastValidDate);
+        return;
+      }
+    }
+    updateVisualState();
+  }
+
+  private boolean isInTwoDigitYearWindow(LocalDate date) {
+    return twoDigitYearStart == null
+        || (date.getYear() >= twoDigitYearStart.getYear()
+            && date.getYear() <= twoDigitYearStart.getYear() + 99);
+  }
+
+  /**
    * Registers a listener that is notified when a new valid date is entered.
    *
    * @param listener the listener to add
@@ -181,16 +445,38 @@ public class MaskedDateField extends JTextField {
   }
 
   private boolean isDateAllowed(LocalDate date) {
+    if ((rangeFrom != null && date.isBefore(rangeFrom))
+        || (rangeTo != null && date.isAfter(rangeTo))
+        || !isInTwoDigitYearWindow(date)) {
+      return false;
+    }
     return vetoPolicy == null || vetoPolicy.isDateAllowed(date);
+  }
+
+  private boolean hasUnfilledPositions(String text) {
+    if (text == null) {
+      return true;
+    }
+    int length = Math.min(text.length(), editablePositions.length);
+    for (int i = 0; i < length; i++) {
+      if (editablePositions[i] && text.charAt(i) == '_') {
+        return true;
+      }
+    }
+    return false;
   }
 
   private LocalDate parseText() {
     String text = getText();
-    if (text == null || text.equals(maskTemplate) || text.contains("_")) {
+    if (hasUnfilledPositions(text)) {
       return null;
     }
     try {
-      return LocalDate.parse(text, formatter);
+      LocalDate parsed = LocalDate.parse(text, formatter);
+      // The default (SMART) resolver turns an impossible day such as 2026-04-31 into the last day
+      // of the month; only accept text that is exactly how the parsed date is written. (STRICT
+      // would also reject every yyyy pattern, since year-of-era needs an era field.)
+      return formatter.format(parsed).equals(text) ? parsed : null;
     } catch (DateTimeParseException e) {
       return null;
     }
@@ -215,38 +501,79 @@ public class MaskedDateField extends JTextField {
 
   private void updateVisualState() {
     String text = getText();
-    if (text == null || text.equals(maskTemplate) || text.contains("_")) {
-      setForeground(NORMAL_COLOR);
-      setBackground(Color.WHITE);
+    if (hasUnfilledPositions(text)) {
+      super.setForeground(baseForeground);
       setFont(baseFont);
       return;
     }
 
     LocalDate parsed = parseText();
     if (parsed == null) {
-      setForeground(INVALID_COLOR);
-      setBackground(Color.WHITE);
+      super.setForeground(INVALID_COLOR);
       setFont(baseFont);
     } else if (!isDateAllowed(parsed)) {
-      setForeground(NORMAL_COLOR);
-      setBackground(Color.WHITE);
+      super.setForeground(baseForeground);
       Map<TextAttribute, Object> attrs = new HashMap<>(baseFont.getAttributes());
       attrs.put(TextAttribute.STRIKETHROUGH, TextAttribute.STRIKETHROUGH_ON);
       setFont(baseFont.deriveFont(attrs));
     } else {
-      setForeground(NORMAL_COLOR);
-      setBackground(Color.WHITE);
+      super.setForeground(baseForeground);
       setFont(baseFont);
     }
   }
 
+  /**
+   * Sets the text color used for valid and incomplete input. Text that is not a date is still shown
+   * in red.
+   *
+   * @param color the foreground color
+   */
+  @Override
+  public void setForeground(Color color) {
+    baseForeground = color;
+    if (editablePositions == null || updatingUI) {
+      // Called by the look and feel, during construction or while the UI is being reinstalled.
+      super.setForeground(color);
+    } else {
+      updateVisualState();
+    }
+  }
+
+  /**
+   * Reinstalls the look and feel. The base color and font are put back first so the new look and
+   * feel can replace them; a red or struck-through state would otherwise hide them from it.
+   */
+  @Override
+  public void updateUI() {
+    if (editablePositions == null) {
+      // Called from the superclass constructor, before this field is initialized.
+      super.updateUI();
+      return;
+    }
+    super.setForeground(baseForeground);
+    super.setFont(baseFont);
+    updatingUI = true;
+    try {
+      super.updateUI();
+    } finally {
+      updatingUI = false;
+    }
+    updateVisualState();
+  }
+
+  /**
+   * Sets the font of the field. The supplied font (including its style) is kept as the base font; a
+   * strikethrough is only added temporarily to mark disallowed dates.
+   *
+   * @param font the font to use
+   */
   @Override
   public void setFont(Font font) {
     super.setFont(font);
     if (font != null
         && !TextAttribute.STRIKETHROUGH_ON.equals(
             font.getAttributes().get(TextAttribute.STRIKETHROUGH))) {
-      baseFont = font.deriveFont(Font.PLAIN);
+      baseFont = font;
     }
   }
 
@@ -313,12 +640,41 @@ public class MaskedDateField extends JTextField {
     }
   }
 
+  /**
+   * Blanks the editable positions in the current selection.
+   *
+   * @return {@code true} if there was a selection to clear
+   */
+  private boolean clearSelectedPositions() {
+    int start = getSelectionStart();
+    int end = getSelectionEnd();
+    if (start == end) {
+      return false;
+    }
+    internalUpdate = true;
+    try {
+      StringBuilder result = new StringBuilder(getText());
+      for (int i = start; i < end && i < result.length() && i < editablePositions.length; i++) {
+        if (editablePositions[i]) {
+          result.setCharAt(i, '_');
+        }
+      }
+      setText(result.toString());
+      updateVisualState();
+    } finally {
+      internalUpdate = false;
+    }
+    setCaretPosition(Math.min(start, getText().length()));
+    onTextChanged();
+    return true;
+  }
+
   private void fireListeners(LocalDate date) {
     for (Consumer<LocalDate> listener : new ArrayList<>(listeners)) {
       try {
         listener.accept(date);
       } catch (RuntimeException e) {
-        System.err.println("MaskedDateField listener threw exception: " + e.getMessage());
+        LOG.log(System.Logger.Level.WARNING, "MaskedDateField listener threw an exception", e);
       }
     }
   }
@@ -338,11 +694,21 @@ public class MaskedDateField extends JTextField {
       }
 
       if (text == null || text.isEmpty()) {
+        if (length > 0) {
+          remove(fb, offset, length);
+        }
         return;
       }
 
       StringBuilder result =
           new StringBuilder(fb.getDocument().getText(0, fb.getDocument().getLength()));
+      int limit = Math.min(editablePositions.length, result.length());
+      // Replacing a selection first blanks it, so leftover digits cannot form a different date.
+      for (int i = offset; i < offset + length && i < limit; i++) {
+        if (editablePositions[i]) {
+          result.setCharAt(i, '_');
+        }
+      }
       int pos = offset;
 
       for (char c : text.toCharArray()) {
@@ -350,10 +716,10 @@ public class MaskedDateField extends JTextField {
           continue;
         }
 
-        while (pos < editablePositions.length && !editablePositions[pos]) {
+        while (pos < limit && !editablePositions[pos]) {
           pos++;
         }
-        if (pos >= editablePositions.length) {
+        if (pos >= limit) {
           break;
         }
 
@@ -389,7 +755,8 @@ public class MaskedDateField extends JTextField {
 
       StringBuilder result =
           new StringBuilder(fb.getDocument().getText(0, fb.getDocument().getLength()));
-      for (int i = offset; i < offset + length && i < editablePositions.length; i++) {
+      int limit = Math.min(editablePositions.length, result.length());
+      for (int i = offset; i < offset + length && i < limit; i++) {
         if (editablePositions[i]) {
           result.setCharAt(i, '_');
         }
@@ -456,6 +823,9 @@ public class MaskedDateField extends JTextField {
           setCaretPosition(prev);
           e.consume();
         }
+      } else if ((e.getKeyCode() == KeyEvent.VK_BACK_SPACE || e.getKeyCode() == KeyEvent.VK_DELETE)
+          && clearSelectedPositions()) {
+        e.consume();
       } else if (e.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
         int target = -1;
         if (isEditablePosition(pos) && getText().charAt(pos) != '_') {

@@ -3,12 +3,14 @@ package se.alipsa.datepicker;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.awt.Color;
+import java.awt.font.TextAttribute;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JLabel;
+import javax.swing.UIManager;
 import org.junit.jupiter.api.Test;
 
 class CalendarPanelTest {
@@ -153,5 +155,116 @@ class CalendarPanelTest {
       }
     }
     return null;
+  }
+
+  @Test
+  void testStrikethroughIsClearedAfterNavigatingAwayFromVetoedDate() throws Exception {
+    LocalDate vetoed = LocalDate.of(2026, 11, 12);
+    CalendarPanel panel = new CalendarPanel(LocalDate.of(2026, 11, 1), Locale.UK);
+    panel.setVetoPolicy(date -> !date.equals(vetoed));
+    JLabel cell = findCell(panel, vetoed);
+    assertEquals(
+        TextAttribute.STRIKETHROUGH_ON,
+        cell.getFont().getAttributes().get(TextAttribute.STRIKETHROUGH));
+
+    panel.nextMonth();
+
+    assertNotEquals(
+        TextAttribute.STRIKETHROUGH_ON,
+        cell.getFont().getAttributes().get(TextAttribute.STRIKETHROUGH));
+  }
+
+  @Test
+  void testNullArgumentsUseDefaults() {
+    CalendarPanel panel = new CalendarPanel(null, null, null, null);
+    assertNull(panel.getSelectedDate());
+    assertEquals(YearMonth.now(), panel.getDisplayedYearMonth());
+
+    CalendarPanel noInitial = new CalendarPanel((LocalDate) null);
+    assertNull(noInitial.getSelectedDate());
+  }
+
+  @Test
+  void testInitialOutsideRangeShowsClosestMonthWithoutSelection() {
+    CalendarPanel panel =
+        new CalendarPanel(
+            LocalDate.of(2020, 1, 1),
+            LocalDate.of(2020, 12, 31),
+            LocalDate.of(2026, 11, 11),
+            Locale.UK);
+
+    assertNull(panel.getSelectedDate());
+    assertEquals(YearMonth.of(2020, 12), panel.getDisplayedYearMonth());
+  }
+
+  @Test
+  void testFromAfterToThrows() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new CalendarPanel(LocalDate.of(2021, 1, 1), LocalDate.of(2020, 1, 1), null, Locale.UK));
+  }
+
+  @Test
+  void testSetSelectedDateNullClearsSelection() {
+    CalendarPanel panel = new CalendarPanel(LocalDate.of(2026, 4, 17));
+    int[] events = {0};
+    panel.addListener(date -> events[0]++);
+
+    panel.setSelectedDate(null);
+
+    assertNull(panel.getSelectedDate());
+    assertEquals(1, events[0]);
+  }
+
+  @Test
+  void testSetSelectedDateSameDateDoesNotRefire() {
+    LocalDate date = LocalDate.of(2026, 4, 17);
+    CalendarPanel panel = new CalendarPanel(date);
+    int[] events = {0};
+    panel.addListener(d -> events[0]++);
+
+    panel.setSelectedDate(date);
+
+    assertEquals(0, events[0]);
+  }
+
+  @Test
+  void testKeyboardNavigationSelectsDate() {
+    CalendarPanel panel = new CalendarPanel(LocalDate.of(2026, 4, 17), Locale.UK);
+    LocalDate[] received = {null};
+    panel.addListener(date -> received[0] = date);
+
+    panel.getActionMap().get("nextDay").actionPerformed(null);
+    panel.getActionMap().get("nextWeek").actionPerformed(null);
+    panel.getActionMap().get("nextMonth").actionPerformed(null);
+    assertEquals(YearMonth.of(2026, 5), panel.getDisplayedYearMonth());
+    panel.getActionMap().get("selectKeyboardDate").actionPerformed(null);
+
+    assertEquals(LocalDate.of(2026, 5, 25), received[0]);
+    assertEquals(LocalDate.of(2026, 5, 25), panel.getSelectedDate());
+  }
+
+  @Test
+  void testKeyboardNavigationIsClampedToRange() {
+    LocalDate to = LocalDate.of(2026, 4, 20);
+    CalendarPanel panel = new CalendarPanel(LocalDate.of(2025, 1, 1), to, to, Locale.UK);
+
+    panel.getActionMap().get("nextMonth").actionPerformed(null);
+    panel.getActionMap().get("selectKeyboardDate").actionPerformed(null);
+
+    assertEquals(to, panel.getSelectedDate());
+    assertEquals(YearMonth.of(2026, 4), panel.getDisplayedYearMonth());
+  }
+
+  @Test
+  void testCellsUseLookAndFeelColors() throws Exception {
+    CalendarPanel panel = new CalendarPanel(LocalDate.of(2026, 4, 17), Locale.UK);
+
+    JLabel unselected = findCell(panel, LocalDate.of(2026, 4, 16));
+    JLabel selected = findCell(panel, LocalDate.of(2026, 4, 17));
+
+    assertEquals(UIManager.getColor("List.background"), unselected.getBackground());
+    assertEquals(UIManager.getColor("List.selectionBackground"), selected.getBackground());
   }
 }

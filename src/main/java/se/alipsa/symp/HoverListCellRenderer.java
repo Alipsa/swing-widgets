@@ -2,9 +2,12 @@ package se.alipsa.symp;
 
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAccessor;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JList;
 
@@ -13,15 +16,22 @@ public class HoverListCellRenderer extends DefaultListCellRenderer {
 
   private static final Color HOVER_COLOR = Color.LIGHT_GRAY;
   private int hoverIndex = -1;
+  private DateTimeFormatter formatter;
 
   /** Creates a hover-aware list cell renderer. */
   public HoverListCellRenderer() {}
 
-  static void register(JList<YearMonth> l) {
+  static HoverListCellRenderer register(JList<YearMonth> l) {
     HoverListCellRenderer renderer = new HoverListCellRenderer();
     l.setCellRenderer(renderer);
     l.addMouseListener(renderer.getHandler(l));
     l.addMouseMotionListener(renderer.getHandler(l));
+    return renderer;
+  }
+
+  /** Sets the formatter used for date values; {@code null} renders values with toString(). */
+  void setFormatter(DateTimeFormatter formatter) {
+    this.formatter = formatter;
   }
 
   /**
@@ -37,7 +47,11 @@ public class HoverListCellRenderer extends DefaultListCellRenderer {
   @Override
   public Component getListCellRendererComponent(
       JList list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-    super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+    Object display =
+        formatter != null && value instanceof TemporalAccessor
+            ? formatter.format((TemporalAccessor) value)
+            : value;
+    super.getListCellRendererComponent(list, display, index, isSelected, cellHasFocus);
 
     if (!isSelected) {
       setBackground(index == hoverIndex ? HOVER_COLOR : list.getBackground());
@@ -86,7 +100,8 @@ public class HoverListCellRenderer extends DefaultListCellRenderer {
     @Override
     public void mouseMoved(MouseEvent e) {
       int index = list.locationToIndex(e.getPoint());
-      setHoverIndex(list.getCellBounds(index, index).contains(e.getPoint()) ? index : -1);
+      Rectangle bounds = index >= 0 ? list.getCellBounds(index, index) : null;
+      setHoverIndex(bounds != null && bounds.contains(e.getPoint()) ? index : -1);
     }
 
     private void setHoverIndex(int index) {

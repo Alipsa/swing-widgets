@@ -2,8 +2,10 @@ package se.alipsa.datepicker;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.awt.Font;
 import java.awt.event.KeyEvent;
 import java.awt.font.TextAttribute;
+import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.Locale;
 import javax.swing.SwingUtilities;
@@ -332,5 +334,123 @@ class MaskedDateFieldTest {
 
     assertEquals("2026-04-18", field.getText());
     assertEquals(LocalDate.of(2026, 4, 18), field.getDate());
+  }
+
+  @Test
+  void testQuotedLiteralIsFixedTextAndDateCanBeTyped() throws Exception {
+    MaskedDateField field = new MaskedDateField("dd.MM.yyyy 'г'.", Locale.forLanguageTag("bg-BG"));
+    assertEquals("__.__.____ г.", field.getMaskTemplate());
+
+    SwingUtilities.invokeAndWait(() -> field.setText("15012026"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("15.01.2026 г.", field.getText());
+    assertEquals(LocalDate.of(2026, 1, 15), field.getDate());
+  }
+
+  @Test
+  void testEscapedQuoteInPattern() {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd''", Locale.UK);
+    assertEquals("____-__-__'", field.getMaskTemplate());
+
+    field.setDate(LocalDate.of(2026, 1, 15));
+
+    assertEquals("2026-01-15'", field.getText());
+    assertTrue(field.isDateValid());
+  }
+
+  @Test
+  void testUnsupportedPatternsAreRejected() {
+    for (String pattern :
+        new String[] {"dd MMM yyyy", "d/M/yyyy", "yyyy-MM", "yyyy[-MM-dd]", "yyyy-MM-dd 'x"}) {
+      assertThrows(
+          IllegalArgumentException.class, () -> new MaskedDateField(pattern, Locale.UK), pattern);
+    }
+  }
+
+  @Test
+  void testTypedDateOutsideRangeIsRejectedAndReverted() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDateRange(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31));
+    field.setDate(LocalDate.of(2020, 6, 1));
+    LocalDate[] received = {null};
+    field.addListener(date -> received[0] = date);
+
+    SwingUtilities.invokeAndWait(() -> field.setText("2021-06-01"));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertFalse(field.isDateValid());
+    assertEquals(LocalDate.of(2020, 6, 1), field.getDate());
+    assertNull(received[0]);
+    assertEquals(
+        TextAttribute.STRIKETHROUGH_ON,
+        field.getFont().getAttributes().get(TextAttribute.STRIKETHROUGH));
+
+    Method revert = MaskedDateField.class.getDeclaredMethod("revertIfInvalid");
+    revert.setAccessible(true);
+    revert.invoke(field);
+
+    assertEquals("2020-06-01", field.getText());
+  }
+
+  @Test
+  void testReplacingSelectionBlanksTheSelectedDigits() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDate(LocalDate.of(2026, 6, 15));
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.selectAll();
+          field.replaceSelection("1");
+        });
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("1___-__-__", field.getText());
+    assertEquals(LocalDate.of(2026, 6, 15), field.getDate());
+  }
+
+  @Test
+  void testBackspaceClearsWholeSelection() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDate(LocalDate.of(2026, 6, 15));
+
+    SwingUtilities.invokeAndWait(
+        () -> {
+          field.select(5, 10);
+          KeyEvent backspace =
+              new KeyEvent(
+                  field,
+                  KeyEvent.KEY_PRESSED,
+                  System.currentTimeMillis(),
+                  0,
+                  KeyEvent.VK_BACK_SPACE,
+                  KeyEvent.CHAR_UNDEFINED);
+          field.getKeyListeners()[0].keyPressed(backspace);
+          assertTrue(backspace.isConsumed());
+        });
+
+    assertEquals("2026-__-__", field.getText());
+    assertEquals(5, field.getCaretPosition());
+  }
+
+  @Test
+  void testSetTextEmptyClearsTheMask() throws Exception {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setDate(LocalDate.of(2026, 6, 15));
+
+    SwingUtilities.invokeAndWait(() -> field.setText(""));
+    SwingUtilities.invokeAndWait(() -> {});
+
+    assertEquals("____-__-__", field.getText());
+  }
+
+  @Test
+  void testCustomFontStyleIsKept() {
+    MaskedDateField field = new MaskedDateField("yyyy-MM-dd", Locale.UK);
+    field.setFont(field.getFont().deriveFont(Font.BOLD));
+
+    field.setDate(LocalDate.of(2026, 1, 1));
+
+    assertTrue(field.getFont().isBold());
   }
 }

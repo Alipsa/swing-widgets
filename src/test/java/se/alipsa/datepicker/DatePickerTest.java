@@ -10,10 +10,13 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.lang.reflect.Method;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 
 class DatePickerTest {
@@ -323,5 +326,97 @@ class DatePickerTest {
 
     assertEquals(picker.getMinimumSize().width, picker.getWidth());
     assertTrue(picker.getTextField().getWidth() > 0);
+  }
+
+  @Test
+  void testInitialDateOutsideRangeLeavesPickerEmpty() {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(2020, 1, 1), LocalDate.of(2020, 12, 31), LocalDate.of(2025, 5, 5));
+
+    assertNull(picker.getDate());
+    assertEquals(picker.getTextField().getMaskTemplate(), picker.getTextField().getText());
+  }
+
+  @Test
+  void testRangeIsValidatedAfterDefaultsAreApplied() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new DatePicker(null, LocalDate.of(1990, 1, 1), null, Locale.UK));
+  }
+
+  @Test
+  void testTypedDateOutsideRangeIsNotShownAsValue() throws Exception {
+    DatePicker picker =
+        new DatePicker(
+            LocalDate.of(2020, 1, 1),
+            LocalDate.of(2020, 12, 31),
+            LocalDate.of(2020, 6, 1),
+            Locale.UK,
+            "yyyy-MM-dd");
+
+    SwingUtilities.invokeAndWait(() -> picker.getTextField().setText("2021-06-01"));
+    SwingUtilities.invokeAndWait(() -> {});
+    Method revert = MaskedDateField.class.getDeclaredMethod("revertIfInvalid");
+    revert.setAccessible(true);
+    revert.invoke(picker.getTextField());
+
+    assertEquals(LocalDate.of(2020, 6, 1), picker.getDate());
+    assertEquals("2020-06-01", picker.getTextField().getText());
+  }
+
+  @Test
+  void testClearOnEmptyPickerDoesNotNotify() {
+    DatePicker picker = new DatePicker(null, null, null, Locale.UK);
+    int[] events = {0};
+    picker.addListener(date -> events[0]++);
+
+    picker.clear();
+
+    assertEquals(0, events[0]);
+  }
+
+  @Test
+  void testEscapeActionIsOnlyEnabledWhilePopupIsOpen() {
+    DatePicker picker = new DatePicker();
+    assertNotNull(picker.getActionMap().get(DatePicker.CLOSE_POPUP_ACTION));
+    assertFalse(picker.getActionMap().get(DatePicker.CLOSE_POPUP_ACTION).isEnabled());
+  }
+
+  @Test
+  void testThrowingListenerIsReportedAndOthersStillRun() {
+    DatePicker picker = new DatePicker(LocalDate.of(2026, 1, 1), Locale.UK);
+    List<Throwable> reported = new ArrayList<>();
+    int[] events = {0};
+    picker.addListener(
+        date -> {
+          throw new IllegalStateException("boom");
+        });
+    picker.addListener(date -> events[0]++);
+    Thread thread = Thread.currentThread();
+    Thread.UncaughtExceptionHandler original = thread.getUncaughtExceptionHandler();
+    thread.setUncaughtExceptionHandler((t, e) -> reported.add(e));
+    try {
+      picker.setDate(LocalDate.of(2026, 1, 2));
+    } finally {
+      thread.setUncaughtExceptionHandler(original);
+    }
+
+    assertEquals(1, events[0]);
+    assertEquals(1, reported.size());
+    assertEquals("boom", reported.get(0).getMessage());
+  }
+
+  @Test
+  void testDerivedPatternsRoundTripForAllAvailableLocales() {
+    LocalDate date = LocalDate.of(2026, 1, 15);
+    for (Locale locale : Locale.getAvailableLocales()) {
+      String pattern = DatePicker.derivePattern(locale);
+      MaskedDateField field = new MaskedDateField(pattern, locale);
+      field.setDate(date);
+      String tag = locale.toLanguageTag() + " " + pattern;
+      assertTrue(field.isDateValid(), tag);
+      assertEquals(field.getMaskTemplate().length(), field.getText().length(), tag);
+    }
   }
 }
